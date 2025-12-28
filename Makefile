@@ -72,6 +72,10 @@ $(BUILD)/%.o: %.cpp $(HFILES) $(BUILD)
 $(BUILD):
 	for dir in $(SRCS); do mkdir -p $(BUILD)/$$dir; done
 
+libretro:
+	$(MAKE) -f Makefile.libretro
+
 clean:
+	if [ -d "build-libretro" ]; then $(MAKE) -f Makefile.libretro clean; fi
 	rm -rf $(BUILD)
 	rm -f $(NAME)

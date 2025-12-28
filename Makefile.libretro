@@ -1,0 +1,149 @@
+NAME := 3beans_libretro
+BUILD := build-libretro
+GIT_VERSION := $(shell git describe --abbrev=7 --always)
+SRCS := src src/core src/core/arm src/core/convert src/core/gpu src/core/io src/core/memory src/core/teak src/libretro
+ARGS := -Ofast -flto -std=c++11 -D__LIBRETRO__ -DVERSION=\"$(GIT_VERSION)\"
+LIBS := -lepoxy
+
+CPPFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.cpp))
+HFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.h))
+OFILES := $(patsubst %.cpp,$(BUILD)/%.o,$(CPPFILES))
+
+ifeq ($(platform),)
+	platform = unix
+	ifeq ($(shell uname -a),)
+		platform = win
+	else ifneq ($(findstring Darwin,$(shell uname -a)),)
+		platform = osx
+	else ifneq ($(findstring MINGW,$(shell uname -a)),)
+		platform = win
+	endif
+endif
+
+ifneq ($(findstring win,$(platform)),)
+	ARGS += -DWINDOWS
+	TARGET := $(NAME).dll
+	CC ?= gcc
+	CXX ?= g++
+	SHARED := -shared -Wl,--no-undefined -Wl,--version-script=link.T
+	LDFLAGS += -static-libgcc -static-libstdc++ -lwinmm
+else ifneq ($(findstring osx,$(platform)),)
+	ARGS += -DMACOS
+	TARGET := $(NAME).dylib
+
+	ifeq ($(CROSS_COMPILE),1)
+		ARGS += -target $(LIBRETRO_APPLE_PLATFORM) -isysroot $(LIBRETRO_APPLE_ISYSROOT)
+	endif
+
+	SHARED := -dynamiclib
+# iOS
+else ifneq (,$(findstring ios,$(platform)))
+	TARGET := $(NAME)_ios.dylib
+	fpic := -fPIC
+	SHARED := -dynamiclib
+	ifeq ($(IOSSDK),)
+		IOSSDK := $(shell xcodebuild -version -sdk iphoneos Path)
+	endif
+	ifeq ($(platform), ios-arm64)
+		CC = cc -arch arm64 -isysroot $(IOSSDK)
+		CXX = c++ -arch arm64 -isysroot $(IOSSDK)
+	else
+		CC = cc -arch armv7 -isysroot $(IOSSDK)
+		CXX = c++ -arch armv7 -isysroot $(IOSSDK)
+	endif
+	IPHONEMINVER :=
+	ifeq ($(platform),$(filter $(platform),ios9 ios-arm64))
+		IPHONEMINVER = -miphoneos-version-min=8.0
+	else
+		IPHONEMINVER = -miphoneos-version-min=5.0
+	endif
+	LDFLAGS += $(IPHONEMINVER)
+	FLAGS += $(IPHONEMINVER)
+	CC += $(IPHONEMINVER)
+	CXX += $(IPHONEMINVER)
+
+# tvOS
+else ifeq ($(platform), tvos-arm64)
+	TARGET := $(NAME)_tvos.dylib
+	fpic := -fPIC
+	SHARED := -dynamiclib
+	ifeq ($(IOSSDK),)
+		IOSSDK := $(shell xcodebuild -version -sdk appletvos Path)
+	endif
+
+	CC = cc -arch arm64 -isysroot $(IOSSDK)
+	CXX = c++ -arch arm64 -isysroot $(IOSSDK)
+	MINVER = -mappletvos-version-min=11.0
+	LDFLAGS += $(MINVER)
+	FLAGS += $(MINVER)
+	CC += $(MINVER)
+	CXX += $(MINVER)
+
+# Nintendo Switch (libnx)
+else ifeq ($(platform), libnx)
+	include $(DEVKITPRO)/libnx/switch_rules
+	EXT=a
+	TARGET := $(TARGET_NAME)_$(platform).$(EXT)
+	DEFINES := -DSWITCH=1 -U__linux__ -U__linux -DRARCH_INTERNAL
+	CFLAGS  :=  $(DEFINES) -g -O3 -fPIE -I$(LIBNX)/include/ -ffunction-sections -fdata-sections -ftls-model=local-exec -Wl,--allow-multiple-definition -specs=$(LIBNX)/switch.specs
+	CFLAGS += $(INCDIRS)
+	CFLAGS  += $(INCLUDE)  -D__SWITCH__
+	CXXFLAGS := $(ASFLAGS) $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
+	CFLAGS += -std=gnu11
+	STATIC_LINKING = 1
+
+# Nintendo Game Cube / Wii / WiiU
+else ifneq (,$(filter $(platform), ngc wii wiiu))
+	TARGET := $(NAME)_$(platform).a
+	CC = $(DEVKITPPC)/bin/powerpc-eabi-gcc$(EXE_EXT)
+	CXX = $(DEVKITPPC)/bin/powerpc-eabi-g++$(EXE_EXT)
+	AR = $(DEVKITPPC)/bin/powerpc-eabi-ar$(EXE_EXT)
+	ENDIANNESS_DEFINES += -DGEKKO -mcpu=750 -meabi -mhard-float
+	ENDIANNESS_DEFINES += -ffunction-sections -fdata-sections -D__wiiu__ -D__wut__
+	EXTRA_INCLUDES := -I$(DEVKITPRO)/libogc/include
+	STATIC_LINKING = 1
+
+   # Nintendo WiiU
+	ifneq (,$(findstring wiiu,$(platform)))
+		ENDIANNESS_DEFINES += -DWIIU -DHW_RVL
+
+   # Nintendo Wii
+	else ifneq (,$(findstring wii,$(platform)))
+		ENDIANNESS_DEFINES += -DHW_RVL -mrvl
+
+   # Nintendo Game Cube
+	else ifneq (,$(findstring ngc,$(platform)))
+		ENDIANNESS_DEFINES += -DHW_DOL -mogc
+	endif
+
+	FLAGS += $(ENDIANNESS_DEFINES) $(WARNINGS) -DSTDC_HEADERS -D__STDC_LIMIT_MACROS $(EXTRA_INCLUDES)
+
+else ifneq (,$(findstring unix,$(platform)))
+	fpic := -fPIC
+	SHARED := -shared -Wl,--version-script=link.T
+	TARGET := $(NAME).so
+else
+	TARGET := $(NAME).so
+endif
+
+CFLAGS  += $(fpic) $(FLAGS) $(ARGS)
+LDFLAGS += $(fpic) $(SHARED)
+
+all: $(NAME)
+
+$(NAME): $(OFILES)
+ifeq ($(STATIC_LINKING), 1)
+	$(AR) rcs $@ $(OFILES)
+else
+	$(CXX) $(LDFLAGS) -o $(TARGET) $(ARGS) $^ $(LIBS)
+endif
+
+$(BUILD)/%.o: %.cpp $(HFILES) $(BUILD)
+	$(CXX) -c -o $@ $(CFLAGS) $(INCS) $<
+
+$(BUILD):
+	for dir in $(SRCS); do mkdir -p $(BUILD)/$$dir; done
+
+clean:
+	rm -rf $(BUILD)
+	rm -f $(TARGET)

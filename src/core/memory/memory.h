@@ -43,6 +43,10 @@ public:
     template <typename T> T readFallback(CpuId id, uint32_t address);
     template <typename T> void writeFallback(CpuId id, uint32_t address, T value);
 
+#ifdef __LIBRETRO__
+    uint8_t *getRam() { return vram; }
+#endif
+
 private:
     Core *core;
 

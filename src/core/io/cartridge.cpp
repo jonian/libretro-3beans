@@ -46,6 +46,9 @@ Cartridge::Cartridge(Core *core, std::string &cartPath): core(core) {
     LOG_INFO("Cartridge is type %d, and its IDs are 0x%X and 0x%X\n", type, cartId1, cartId2);
     savePath = cartPath.substr(0, cartPath.rfind('.')) + ".sav";
 
+#ifdef __LIBRETRO__
+    savePath = Settings::basePath + savePath.substr(savePath.find_last_of("/\\"));
+#endif
     // Open a CARD1 save file if it exists
     if (type == 1) {
         if (FILE *saveFile = fopen(savePath.c_str(), "rb")) {

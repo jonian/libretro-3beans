@@ -1,6 +1,10 @@
 /.idea
 /build
+/build-libretro
 /3beans
+/3beans*.so
+/3beans*.dll
+/3beans*.dylib
 boot9.bin
 boot11.bin
 nand.bin

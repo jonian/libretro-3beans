@@ -1,0 +1,39 @@
+# Software Information
+display_name = "Nintendo - 3DS (3Beans)"
+authors = "Hydr8gon|Jonian Guveli"
+supported_extensions = "3ds|cci"
+corename = "3Beans"
+license = "GPLv3"
+display_version = "Git"
+categories = "Emulator"
+
+# Hardware Information
+manufacturer = "Nintendo"
+systemname = "Nintendo 3DS"
+systemid = "3ds"
+
+# Libretro Features
+database = "Nintendo - Nintendo 3DS"
+supports_no_game = "true"
+cheats = "false"
+core_options = "true"
+savestate = "false"
+needs_fullpath = "true"
+disk_control = "false"
+hw_render = "false"
+is_experimental = "true"
+
+# Firmware / BIOS
+firmware_count = 3
+firmware0_desc = "boot9.bin (ARM9 Boot)"
+firmware0_path = "boot9.bin"
+firmware0_opt = "false"
+firmware1_desc = "boot11.bin (ARM11 Boot)"
+firmware1_path = "boot11.bin"
+firmware1_opt = "false"
+firmware2_desc = "nand.bin"
+firmware2_path = "nand.bin"
+firmware2_opt = "false"
+notes = "(!) boot9.bin (md5): d8675e80e5dd3a9afaaf885d79b14e9c|(!) boot11.bin (md5): 43454041b0cddf1a34c130593afa8b9b"
+
+description = "Unofficial libretro port of 3Beans, a low-level 3DS emulator"
