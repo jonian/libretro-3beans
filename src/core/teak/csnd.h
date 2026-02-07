@@ -29,13 +29,13 @@ class Core;
 
 enum DspClock {
     CLK_OFF,
-    CLK_32KHZ,
-    CLK_47KHZ
+    CLK_33KHZ,
+    CLK_48KHZ
 };
 
 class Csnd {
 public:
-    Csnd(Core *core): core(core) {}
+    Csnd(Core &core): core(core) {}
     ~Csnd();
 
     uint32_t *getSamples(uint32_t freq, uint32_t count);
@@ -64,7 +64,7 @@ public:
     void writeSndexcnt(uint32_t mask, uint32_t value);
 
 private:
-    Core *core;
+    Core &core;
     std::condition_variable condVars[2];
     std::mutex mutexes[3];
     std::atomic<bool> ready{false};

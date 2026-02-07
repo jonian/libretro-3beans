@@ -40,7 +40,7 @@ public:
     uint32_t regPc = 0;
     bool halted = false;
 
-    TeakInterp(Core *core);
+    TeakInterp(Core &core);
     void resetCycles();
     void stopCycles();
 
@@ -49,7 +49,7 @@ public:
     void interrupt(int i);
 
 private:
-    Core *core;
+    Core &core;
     bool scheduled = false;
 
     uint16_t *readReg[0x20] = { &regR[0], &regR[1], &regR[2], &regR[3], &regR[4], &regR[5], &regR[7],
@@ -328,6 +328,33 @@ private:
     int maaY0mrn(uint16_t opcode);
     int maaY0reg(uint16_t opcode);
     int maaY0r6(uint16_t opcode);
+    int maasuMrmr(uint16_t opcode);
+    int maasuMrni16(uint16_t opcode);
+    int maasuY0mrn(uint16_t opcode);
+    int maasuY0reg(uint16_t opcode);
+    int maasuY0r6(uint16_t opcode);
+    int macMrmr(uint16_t opcode);
+    int macMrni16(uint16_t opcode);
+    int macY0mi8(uint16_t opcode);
+    int macY0mrn(uint16_t opcode);
+    int macY0reg(uint16_t opcode);
+    int macY0r6(uint16_t opcode);
+    int macsuMrmr(uint16_t opcode);
+    int macsuMrni16(uint16_t opcode);
+    int macsuY0mi8(uint16_t opcode);
+    int macsuY0mrn(uint16_t opcode);
+    int macsuY0reg(uint16_t opcode);
+    int macsuY0r6(uint16_t opcode);
+    int macusMrmr(uint16_t opcode);
+    int macusMrni16(uint16_t opcode);
+    int macusY0mrn(uint16_t opcode);
+    int macusY0reg(uint16_t opcode);
+    int macusY0r6(uint16_t opcode);
+    int macuuMrmr(uint16_t opcode);
+    int macuuMrni16(uint16_t opcode);
+    int macuuY0mrn(uint16_t opcode);
+    int macuuY0reg(uint16_t opcode);
+    int macuuY0r6(uint16_t opcode);
     int maxGe(uint16_t opcode);
     int maxGt(uint16_t opcode);
     int minLe(uint16_t opcode);

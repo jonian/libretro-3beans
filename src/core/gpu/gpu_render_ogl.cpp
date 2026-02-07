@@ -18,17 +18,25 @@
 */
 
 #include <algorithm>
+#include <cstring>
 
 #include "../core.h"
 #include "gpu_render_ogl.h"
 
-const char *GpuRenderOgl::vtxCode = R"(
+enum RenderLoc {
+    LOC_IN_POS = 0,
+    LOC_IN_COL = 1,
+    LOC_IN_CRDS = 2,
+    LOC_IN_CRDT = 3
+};
+
+const char *GpuRenderOgl::vtxCodeSoft = R"(
     #version 330
 
-    in vec4 inPosition;
-    in vec4 inColor;
-    in vec3 inCoordsS;
-    in vec3 inCoordsT;
+    layout(location = 0) in vec4 inPosition;
+    layout(location = 1) in vec4 inColor;
+    layout(location = 2) in vec3 inCoordsS;
+    layout(location = 3) in vec3 inCoordsT;
 
     out vec4 vtxColor;
     out vec3 vtxCoordsS;
@@ -149,77 +157,29 @@ const char *GpuRenderOgl::fragCode = R"(
     }
 )";
 
-GpuRenderOgl::GpuRenderOgl(Core *core): core(core) {
-    // Compile the vertex and fragment shaders
-    GLint vtxShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vtxShader, 1, &vtxCode, nullptr);
-    glCompileShader(vtxShader);
-    GLint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
+GpuRenderOgl::GpuRenderOgl(Core &core): core(core) {
+    // Compile the default shader program for software vertices
+    fragShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragShader, 1, &fragCode, nullptr);
     glCompileShader(fragShader);
+    softProgram = makeProgram(vtxCodeSoft);
+    setProgram(softProgram);
 
-    // Create a program with the shaders
-    program = glCreateProgram();
-    glAttachShader(program, vtxShader);
-    glAttachShader(program, fragShader);
-    glLinkProgram(program);
-    glUseProgram(program);
-    glDeleteShader(vtxShader);
-    glDeleteShader(fragShader);
-
-    // Create vertex array and buffer objects
+    // Create array and buffer objects for the soft vertex shader
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    // Configure vertex input attributes
-    GLint loc = glGetAttribLocation(program, "inPosition");
-    glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE, sizeof(SoftVertex), (void*)offsetof(SoftVertex, x));
-    glEnableVertexAttribArray(loc);
-    loc = glGetAttribLocation(program, "inColor");
-    glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE, sizeof(SoftVertex), (void*)offsetof(SoftVertex, r));
-    glEnableVertexAttribArray(loc);
-    loc = glGetAttribLocation(program, "inCoordsS");
-    glVertexAttribPointer(loc, 3, GL_FLOAT, GL_FALSE, sizeof(SoftVertex), (void*)offsetof(SoftVertex, s0));
-    glEnableVertexAttribArray(loc);
-    loc = glGetAttribLocation(program, "inCoordsT");
-    glVertexAttribPointer(loc, 3, GL_FLOAT, GL_FALSE, sizeof(SoftVertex), (void*)offsetof(SoftVertex, t0));
-    glEnableVertexAttribArray(loc);
-
-    // Set single uniform locations and initial values
-    posScaleLoc = glGetUniformLocation(program, "posScale");
-    glUniform4f(posScaleLoc, 1.0f, 1.0f, -1.0f, 1.0f);
-    combBufColorLoc = glGetUniformLocation(program, "combBufColor");
-    glUniform4f(combBufColorLoc, 0.0f, 0.0f, 0.0f, 0.0f);
-    combBufMaskLoc = glGetUniformLocation(program, "combBufMask");
-    glUniform1i(combBufMaskLoc, 0);
-    alphaFuncLoc = glGetUniformLocation(program, "alphaFunc");
-    glUniform1i(alphaFuncLoc, 0);
-    alphaValueLoc = glGetUniformLocation(program, "alphaValue");
-    glUniform1f(alphaValueLoc, 0.0f);
-
-    // Set array uniform locations and initial values
-    for (int i = 0; i < 6; i++) {
-        std::string name = "combColors[" + std::to_string(i) + "]";
-        combColorLocs[i] = glGetUniformLocation(program, name.c_str());
-        glUniform4f(combColorLocs[i], 0.0f, 0.0f, 0.0f, 0.0f);
-        for (int j = 0; j < 6; j++) {
-            name = "combSrcs[" + std::to_string(i * 6 + j) + "]";
-            combSrcLocs[i][j] = glGetUniformLocation(program, name.c_str());
-            glUniform1i(combSrcLocs[i][j], 0);
-            name = "combOpers[" + std::to_string(i * 6 + j) + "]";
-            combOperLocs[i][j] = glGetUniformLocation(program, name.c_str());
-            glUniform1i(combOperLocs[i][j], 0);
-            if (j >= 2) continue;
-            name = "combModes[" + std::to_string(i * 2 + j) + "]";
-            combModeLocs[i][j] = glGetUniformLocation(program, name.c_str());
-            glUniform1i(combModeLocs[i][j], 0);
-        }
-        if (i >= 3) continue;
-        name = "texUnits[" + std::to_string(i) + "]";
-        glUniform1i(glGetUniformLocation(program, name.c_str()), i);
-    }
+    // Configure input attributes for the soft vertex shader
+    glVertexAttribPointer(LOC_IN_POS, 4, GL_FLOAT, GL_FALSE, sizeof(VertexInput), (void*)offsetof(SoftVertex, x));
+    glEnableVertexAttribArray(LOC_IN_POS);
+    glVertexAttribPointer(LOC_IN_COL, 4, GL_FLOAT, GL_FALSE, sizeof(VertexInput), (void*)offsetof(SoftVertex, r));
+    glEnableVertexAttribArray(LOC_IN_COL);
+    glVertexAttribPointer(LOC_IN_CRDS, 3, GL_FLOAT, GL_FALSE, sizeof(VertexInput), (void*)offsetof(SoftVertex, s0));
+    glEnableVertexAttribArray(LOC_IN_CRDS);
+    glVertexAttribPointer(LOC_IN_CRDT, 3, GL_FLOAT, GL_FALSE, sizeof(VertexInput), (void*)offsetof(SoftVertex, t0));
+    glEnableVertexAttribArray(LOC_IN_CRDT);
 
     // Set some state that only has to be done once
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -251,15 +211,75 @@ GpuRenderOgl::GpuRenderOgl(Core *core): core(core) {
 }
 
 GpuRenderOgl::~GpuRenderOgl() {
-    // Clean up everything that was generated
-    for (int i = 0; i < texCache.size(); i++)
+    // Clean up resources allocated in the texture cache
+    for (int i = 0; i < texCache.size(); i++) {
         glDeleteTextures(1, &texCache[i].tex);
+        delete[] texCache[i].tags;
+    }
+
+    // Clean up everything else that was generated
     glDeleteTextures(1, &texture);
     glDeleteRenderbuffers(1, &depBuf);
     glDeleteFramebuffers(1, &colBuf);
     glDeleteBuffers(1, &vbo);
     glDeleteVertexArrays(1, &vao);
-    glDeleteProgram(program);
+    glDeleteProgram(softProgram);
+    glDeleteShader(fragShader);
+}
+
+GLuint GpuRenderOgl::makeProgram(const char *vtxCode) {
+    // Compile the provided vertex shader code
+    GLint vtxShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vtxShader, 1, &vtxCode, nullptr);
+    glCompileShader(vtxShader);
+
+    // Check for compilation errors and log them
+    GLint res, size;
+    glGetShaderiv(vtxShader, GL_COMPILE_STATUS, &res);
+    if (res == GL_FALSE) {
+        glGetShaderiv(vtxShader, GL_INFO_LOG_LENGTH, &size);
+        GLchar *log = new GLchar[size];
+        glGetShaderInfoLog(vtxShader, size, &size, log);
+        LOG_CRIT("Vertex shader GLSL compilation error: %s", log);
+        delete[] log;
+    }
+
+    // Link a program using the shared fragment shader
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vtxShader);
+    glAttachShader(program, fragShader);
+    glLinkProgram(program);
+
+    // Clean up the shader and return the program
+    glDeleteShader(vtxShader);
+    return program;
+}
+
+void GpuRenderOgl::setProgram(GLuint program) {
+    // Update the program and its uniform locations
+    glUseProgram(program);
+    posScaleLoc = glGetUniformLocation(program, "posScale");
+    combSrcsLoc = glGetUniformLocation(program, "combSrcs");
+    combOpersLoc = glGetUniformLocation(program, "combOpers");
+    combModesLoc = glGetUniformLocation(program, "combModes");
+    combColorsLoc = glGetUniformLocation(program, "combColors");
+    combBufColorLoc = glGetUniformLocation(program, "combBufColor");
+    combBufMaskLoc = glGetUniformLocation(program, "combBufMask");
+    alphaFuncLoc = glGetUniformLocation(program, "alphaFunc");
+    alphaValueLoc = glGetUniformLocation(program, "alphaValue");
+    GLint texUnitsLoc = glGetUniformLocation(program, "texUnits");
+
+    // Restore uniform values for the new program
+    glUniform4f(posScaleLoc, 1.0f, flipY ? -1.0f : 1.0f, -1.0f, 1.0f);
+    glUniform1iv(combSrcsLoc, 6 * 6, combSrcs);
+    glUniform1iv(combOpersLoc, 6 * 6, combOpers);
+    glUniform1iv(combModesLoc, 6 * 2, combModes);
+    glUniform4fv(combColorsLoc, 6, combColors[0]);
+    glUniform4fv(combBufColorLoc, 1, combBufColor);
+    glUniform1i(combBufMaskLoc, combBufMask);
+    glUniform1i(alphaFuncLoc, alphaFunc);
+    glUniform1f(alphaValueLoc, alphaValue);
+    for (int i = 0; i < 3; i++) glUniform1i(texUnitsLoc + i, i);
 }
 
 uint32_t GpuRenderOgl::getSwizzle(int x, int y, int width) {
@@ -279,7 +299,7 @@ template <bool alpha> uint32_t GpuRenderOgl::etc1Texel(int i, int x, int y) {
     // Adjust the offset for 4x4 ETC1 tiles and read alpha if provided
     if (alpha) {
         ofs = (ofs & ~0xF) + 8;
-        value = core->memory.read<uint8_t>(ARM11, texAddrs[i] + ofs - 8 + idx / 2);
+        value = core.memory.read<uint8_t>(ARM11, texAddrs[i] + ofs - 8 + idx / 2);
         a = ((value >> ((idx & 0x1) * 4)) & 0xF) * 0xFF / 0xF;
     }
     else {
@@ -288,8 +308,8 @@ template <bool alpha> uint32_t GpuRenderOgl::etc1Texel(int i, int x, int y) {
     }
 
     // Decode an ETC1 texel based on the block it falls in and the base color mode
-    int32_t val1 = core->memory.read<uint32_t>(ARM11, texAddrs[i] + ofs + 0);
-    int32_t val2 = core->memory.read<uint32_t>(ARM11, texAddrs[i] + ofs + 4);
+    int32_t val1 = core.memory.read<uint32_t>(ARM11, texAddrs[i] + ofs + 0);
+    int32_t val2 = core.memory.read<uint32_t>(ARM11, texAddrs[i] + ofs + 4);
     if ((((val2 & BIT(0)) ? y : x) & 0x3) < 2) { // Block 1
         int16_t tbl = etc1Tables[(val2 >> 5) & 0x7][((val1 >> (idx + 15)) & 0x2) | ((val1 >> idx) & 0x1)];
         if (val2 & BIT(1)) { // Differential
@@ -324,9 +344,18 @@ template <bool alpha> uint32_t GpuRenderOgl::etc1Texel(int i, int x, int y) {
     return (r << 24) | (g << 16) | (b << 8) | a;
 }
 
+void GpuRenderOgl::submitInput(float (*input)[4]) {
+    // Queue raw shader input to be drawn
+    VertexInput vi;
+    memcpy(vi.input, input, sizeof(vi.input));
+    vertices.push_back(vi);
+}
+
 void GpuRenderOgl::submitVertex(SoftVertex &vertex) {
-    // Queue a vertex to be drawn
-    vertices.push_back(vertex);
+    // Queue a software vertex to be drawn
+    VertexInput vi;
+    vi.vertex = vertex;
+    vertices.push_back(vi);
 }
 
 void GpuRenderOgl::flushVertices() {
@@ -334,7 +363,7 @@ void GpuRenderOgl::flushVertices() {
     if (vertices.empty()) return;
     if (readDirty) updateBuffers();
     if (texDirty) updateTextures();
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(SoftVertex), &vertices[0], GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(VertexInput), &vertices[0], GL_DYNAMIC_DRAW);
     glDrawArrays(primMode, 0, vertices.size());
     vertices = {};
     writeDirty = true;
@@ -355,7 +384,7 @@ void GpuRenderOgl::flushBuffers() {
         glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, data);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
-                core->memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 4, data[y * w + x]);
+                core.memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 4, data[y * w + x]);
         break;
     case COL_RGB8:
         data = new uint32_t[w * h];
@@ -363,9 +392,9 @@ void GpuRenderOgl::flushBuffers() {
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 uint32_t src = data[y * w + x], dst = colbufAddr + getSwizzle(x, y, w) * 3;
-                core->memory.write<uint8_t>(ARM11, dst + 0, src >> 8);
-                core->memory.write<uint8_t>(ARM11, dst + 1, src >> 16);
-                core->memory.write<uint8_t>(ARM11, dst + 2, src >> 24);
+                core.memory.write<uint8_t>(ARM11, dst + 0, src >> 8);
+                core.memory.write<uint8_t>(ARM11, dst + 1, src >> 16);
+                core.memory.write<uint8_t>(ARM11, dst + 2, src >> 24);
             }
         }
         break;
@@ -374,21 +403,21 @@ void GpuRenderOgl::flushBuffers() {
         glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, data);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x += 2)
-                core->memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2, data[(y * w + x) / 2]);
+                core.memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2, data[(y * w + x) / 2]);
         break;
     case COL_RGB5A1:
         data = new uint32_t[w * h / 2];
         glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, data);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x += 2)
-                core->memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2, data[(y * w + x) / 2]);
+                core.memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2, data[(y * w + x) / 2]);
         break;
     case COL_RGBA4:
         data = new uint32_t[w * h / 2];
         glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, data);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x += 2)
-                core->memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2, data[(y * w + x) / 2]);
+                core.memory.write<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2, data[(y * w + x) / 2]);
         break;
     }
 
@@ -407,35 +436,35 @@ void GpuRenderOgl::updateBuffers() {
         data = new uint32_t[w * h];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
-                data[y * w + x] = core->memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 4);
+                data[y * w + x] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 4);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, data);
         break;
     case COL_RGB8:
         data = new uint32_t[w * h];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
-                data[y * w + x] = core->memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 3 - 1) | 0xFF;
+                data[y * w + x] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 3 - 1) | 0xFF;
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, data);
         break;
     case COL_RGB565:
         data = new uint32_t[w * h / 2];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x += 2)
-                data[(y * w + x) / 2] = core->memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
+                data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, data);
         break;
     case COL_RGB5A1:
         data = new uint32_t[w * h / 2];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x += 2)
-                data[(y * w + x) / 2] = core->memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
+                data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, data);
         break;
     case COL_RGBA4:
         data = new uint32_t[w * h / 2];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x += 2)
-                data[(y * w + x) / 2] = core->memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
+                data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, data);
         break;
     }
@@ -462,7 +491,6 @@ void GpuRenderOgl::updateTextures() {
         glActiveTexture(GL_TEXTURE0 + i);
 
         // Check for a matching texture in the cache
-        // TODO: invalidate modified textures
         const TexCache *cache = nullptr;
         TexCache cmp; cmp.addr = texAddrs[i];
         auto it = std::lower_bound(texCache.cbegin(), texCache.cend(), cmp);
@@ -474,16 +502,34 @@ void GpuRenderOgl::updateTextures() {
             it++;
         }
 
-        // Create a new cached texture or bind an existing one
-        if (!cache) {
+        // Process the cache entry or create it if missing
+        if (cache) {
+            // Bind an existing texture from the cache
+            glBindTexture(GL_TEXTURE_2D, cache->tex);
+            const TexCache *c = cache;
+
+            // Verify memory tags and invalidate the cache if they changed
+            for (int j = 0; j < c->size; j++) {
+                uint32_t tag = core.memory.memMap11[(c->addr >> 12) + j].tag;
+                if (c->tags[j] == tag) continue;
+                c->tags[j] = tag;
+                cache = nullptr;
+            }
+        }
+        else {
+            // Create a new texture with current tags for the memory it uses
             TexCache tex = { texAddrs[i], texWidths[i], texHeights[i], texFmts[i] };
+            static const uint8_t nybs[] = { 8, 6, 4, 4, 4, 4, 4, 2, 2, 2, 1, 1, 1, 2, 1 };
+            tex.size = (tex.width * tex.height * nybs[tex.fmt] / 2 + 0xFFF) >> 12;
+            tex.tags = new uint32_t[tex.size];
+            for (int j = 0; j < tex.size; j++)
+                tex.tags[j] = core.memory.memMap11[(tex.addr >> 12) + j].tag;
+
+            // Bind the new texture and add it to the cache
             glGenTextures(1, &tex.tex);
             glBindTexture(GL_TEXTURE_2D, tex.tex);
             it = std::upper_bound(texCache.cbegin(), texCache.cend(), tex);
             texCache.insert(it, tex);
-        }
-        else {
-            glBindTexture(GL_TEXTURE_2D, cache->tex);
         }
 
         // Update texture parameters and finish if already cached
@@ -535,7 +581,7 @@ void GpuRenderOgl::updateTextures() {
             dat32 = new uint32_t[w * h];
             for (int y = 0; y < h; y++, y1--)
                 for (int x = 0; x < w; x++)
-                    dat32[y1 * w + x] = core->memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 4);
+                    dat32[y1 * w + x] = core.memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 4);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, dat32);
             delete[] dat32;
             continue;
@@ -543,7 +589,7 @@ void GpuRenderOgl::updateTextures() {
             dat32 = new uint32_t[w * h];
             for (int y = 0; y < h; y++, y1--)
                 for (int x = 0; x < w; x++)
-                    dat32[y1 * w + x] = core->memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 3 - 1);
+                    dat32[y1 * w + x] = core.memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 3 - 1);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, dat32);
             delete[] dat32;
             continue;
@@ -551,7 +597,7 @@ void GpuRenderOgl::updateTextures() {
             dat32 = new uint32_t[w * h / 2];
             for (int y = 0; y < h; y++, y1--)
                 for (int x = 0; x < w; x += 2)
-                    dat32[(y1 * w + x) / 2] = core->memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
+                    dat32[(y1 * w + x) / 2] = core.memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, dat32);
             delete[] dat32;
             continue;
@@ -559,7 +605,7 @@ void GpuRenderOgl::updateTextures() {
             dat32 = new uint32_t[w * h / 2];
             for (int y = 0; y < h; y++, y1--)
                 for (int x = 0; x < w; x += 2)
-                    dat32[(y1 * w + x) / 2] = core->memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
+                    dat32[(y1 * w + x) / 2] = core.memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, dat32);
             delete[] dat32;
             continue;
@@ -567,7 +613,7 @@ void GpuRenderOgl::updateTextures() {
             dat32 = new uint32_t[w * h / 2];
             for (int y = 0; y < h; y++, y1--)
                 for (int x = 0; x < w; x += 2)
-                    dat32[(y1 * w + x) / 2] = core->memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
+                    dat32[(y1 * w + x) / 2] = core.memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, dat32);
             delete[] dat32;
             continue;
@@ -575,7 +621,7 @@ void GpuRenderOgl::updateTextures() {
             dat32 = new uint32_t[w * h / 2];
             for (int y = 0; y < h; y++, y1--)
                 for (int x = 0; x < w; x += 2)
-                    dat32[(y1 * w + x) / 2] = core->memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
+                    dat32[(y1 * w + x) / 2] = core.memory.read<uint32_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) * 2);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, w, h, 0, GL_RG, GL_UNSIGNED_BYTE, dat32);
             delete[] dat32;
             continue;
@@ -583,7 +629,7 @@ void GpuRenderOgl::updateTextures() {
             dat16 = new uint16_t[w * h / 2];
             for (int y = 0; y < h; y++, y1--)
                 for (int x = 0; x < w; x += 2)
-                    dat16[(y1 * w + x) / 2] = core->memory.read<uint16_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w));
+                    dat16[(y1 * w + x) / 2] = core.memory.read<uint16_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w));
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, dat16);
             delete[] dat16;
             continue;
@@ -591,7 +637,7 @@ void GpuRenderOgl::updateTextures() {
             dat16 = new uint16_t[w * h];
             for (int y = 0; y < h; y++, y1--) {
                 for (int x = 0; x < w; x++) {
-                    uint8_t val = core->memory.read<uint8_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w));
+                    uint8_t val = core.memory.read<uint8_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w));
                     dat16[y1 * w + x] = (((val >> 4) * 0xFF / 0xF) << 8) | ((val & 0xF) * 0xFF / 0xF);
                 }
             }
@@ -602,7 +648,7 @@ void GpuRenderOgl::updateTextures() {
             dat16 = new uint16_t[w * h / 2];
             for (int y = 0; y < h; y++, y1--) {
                 for (int x = 0; x < w; x += 2) {
-                    uint8_t val = core->memory.read<uint8_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) / 2);
+                    uint8_t val = core.memory.read<uint8_t>(ARM11, texAddrs[i] + getSwizzle(x, y, w) / 2);
                     dat16[(y1 * w + x) / 2] = (((val >> 4) * 0xFF / 0xF) << 8) | ((val & 0xF) * 0xFF / 0xF);
                 }
             }
@@ -718,37 +764,42 @@ void GpuRenderOgl::setTexWrapT(int i, TexWrap wrap) {
 void GpuRenderOgl::setCombSrc(int i, int j, CombSrc src) {
     // Update one of the texture combiner source uniforms
     flushVertices();
-    glUniform1i(combSrcLocs[i][j], src);
+    const int ofs = i * 6 + j;
+    glUniform1i(combSrcsLoc + ofs, combSrcs[ofs] = src);
 }
 
 void GpuRenderOgl::setCombOper(int i, int j, CombOper oper) {
     // Update one of the texture combiner operand uniforms
     flushVertices();
-    glUniform1i(combOperLocs[i][j], oper);
+    const int ofs = i * 6 + j;
+    glUniform1i(combOpersLoc + ofs, combOpers[ofs] = oper);
 }
 
 void GpuRenderOgl::setCombMode(int i, int j, CalcMode mode) {
     // Update one of the texture combiner mode uniforms
     flushVertices();
-    glUniform1i(combModeLocs[i][j], mode);
+    const int ofs = i * 2 + j;
+    glUniform1i(combModesLoc + ofs, combModes[ofs] = mode);
 }
 
 void GpuRenderOgl::setCombColor(int i, float r, float g, float b, float a) {
     // Update one of the texture combiner color uniforms
     flushVertices();
-    glUniform4f(combColorLocs[i], r, g, b, a);
+    combColors[i][0] = r, combColors[i][1] = g, combColors[i][2] = b, combColors[i][3] = a;
+    glUniform4fv(combColorsLoc + i, 1, combColors[i]);
 }
 
 void GpuRenderOgl::setCombBufColor(float r, float g, float b, float a) {
     // Update the texture combiner buffer color uniform
     flushVertices();
-    glUniform4f(combBufColorLoc, r, g, b, a);
+    combBufColor[0] = r, combBufColor[1] = g, combBufColor[2] = b, combBufColor[3] = a;
+    glUniform4fv(combBufColorLoc, 1, combBufColor);
 }
 
 void GpuRenderOgl::setCombBufMask(uint8_t mask) {
     // Update the texture combiner buffer mask uniform
     flushVertices();
-    glUniform1i(combBufMaskLoc, mask);
+    glUniform1i(combBufMaskLoc, combBufMask = mask);
 }
 
 void GpuRenderOgl::setBlendOper(int i, BlendOper oper) {
@@ -795,13 +846,13 @@ void GpuRenderOgl::setBlendColor(float r, float g, float b, float a) {
 void GpuRenderOgl::setAlphaFunc(TestFunc func) {
     // Update the alpha test function uniform
     flushVertices();
-    glUniform1i(alphaFuncLoc, func);
+    glUniform1i(alphaFuncLoc, alphaFunc = func);
 }
 
 void GpuRenderOgl::setAlphaValue(float value) {
     // Update the alpha test reference uniform
     flushVertices();
-    glUniform1f(alphaValueLoc, value);
+    glUniform1f(alphaValueLoc, alphaValue = value);
 }
 
 void GpuRenderOgl::setStencilTest(TestFunc func, bool enable) {

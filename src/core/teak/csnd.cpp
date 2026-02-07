@@ -17,7 +17,6 @@
     along with 3Beans. If not, see <https://www.gnu.org/licenses/>.
 */
 
-#include <cstring>
 #include "../core.h"
 
 const int8_t Csnd::indexTable[] = { -1, -1, -1, -1, 2, 4, 6, 8 };
@@ -42,10 +41,10 @@ Csnd::~Csnd() {
 
 uint32_t *Csnd::getSamples(uint32_t freq, uint32_t count) {
     // Check if parameters changed and update the buffer details if so
-    dspSize = count * ((dspClock == CLK_32KHZ) ? 32730 : 47610) / freq;
+    dspSize = count * ((dspClock == CLK_33KHZ) ? 32978 : 47971) / freq;
     if (mixFreq != freq || mixSize != count) {
         mixFreq = freq, mixSize = count;
-        csndSize = count * 130920 / freq;
+        csndSize = count * 130914 / freq;
         csndOfs = 0;
 
         // Initialize or resize the buffers themselves
@@ -99,7 +98,7 @@ uint32_t *Csnd::getSamples(uint32_t freq, uint32_t count) {
 
 void Csnd::runSample() {
     // Push a dummy sample if disabled and schedule the next one
-    core->schedule(CSND_SAMPLE, 2048);
+    core.schedule(CSND_SAMPLE, 2048);
     if (csndMainCnt & BIT(0)) return sampleCsnd(0, 0);
 
     // Mix enabled sound channels in stereo
@@ -112,8 +111,8 @@ void Csnd::runSample() {
 
         // Get sample data based on the channel format
         switch (fmt) {
-            case 0: data = core->memory.read<uint8_t>(ARM11, chanCurrent[i]) << 8; break; // PCM8
-            case 1: data = core->memory.read<uint16_t>(ARM11, chanCurrent[i]); break; // PCM16
+            case 0: data = core.memory.read<uint8_t>(ARM11, chanCurrent[i]) << 8; break; // PCM8
+            case 1: data = core.memory.read<uint16_t>(ARM11, chanCurrent[i]); break; // PCM16
             case 2: data = adpcmSamples[i]; break; // ADPCM
 
         case 3: // Pulse/Noise
@@ -148,7 +147,7 @@ void Csnd::runSample() {
 
             case 2: { // ADPCM
                 // Get the next 4-bit ADPCM data value
-                uint8_t value = core->memory.read<uint8_t>(ARM11, chanCurrent[i]);
+                uint8_t value = core.memory.read<uint8_t>(ARM11, chanCurrent[i]);
                 value = (value >> ((adpcmToggle & BIT(i)) ? 4 : 0)) & 0xF;
 
                 // Increment the data pointer every other 4-bit value
@@ -350,8 +349,8 @@ void Csnd::writeSndexcnt(uint32_t mask, uint32_t value) {
     if ((codecSndexcnt & 0x80008000) != 0x80008000) // Clock/timing enable
         dspClock = CLK_OFF;
     else if (codecSndexcnt & BIT(13)) // Frequency
-        dspClock = CLK_47KHZ;
+        dspClock = CLK_48KHZ;
     else
-        dspClock = CLK_32KHZ;
-    core->dsp.setAudClock(dspClock);
+        dspClock = CLK_33KHZ;
+    core.dsp.setAudClock(dspClock);
 }

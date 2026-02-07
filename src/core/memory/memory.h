@@ -21,16 +21,44 @@
 
 #include <cstdint>
 
+#define DEF_IO08(addr, func) \
+    case addr + 0: \
+        base -= addr; \
+        size = 1; \
+        func; \
+        goto next;
+
+#define DEF_IO16(addr, func) \
+    case addr + 0: case addr + 1: \
+        base -= addr; \
+        size = 2; \
+        func; \
+        goto next;
+
+#define DEF_IO32(addr, func) \
+    case addr + 0: case addr + 1: \
+    case addr + 2: case addr + 3: \
+        base -= addr; \
+        size = 4; \
+        func; \
+        goto next;
+
+#define IO_PARAMS mask << (base << 3), data << (base << 3)
+#define IO_PARAMS8 data << (base << 3)
+
 class Core;
+
+struct MemMap {
+    uint8_t *read, *write;
+    uint32_t tag;
+};
 
 class Memory {
 public:
-    uint8_t *readMap11[0x100000] = {};
-    uint8_t *writeMap11[0x100000] = {};
-    uint8_t *readMap9[0x100000] = {};
-    uint8_t *writeMap9[0x100000] = {};
+    MemMap memMap11[0x100000] = {};
+    MemMap memMap9[0x100000] = {};
 
-    Memory(Core *core): core(core) {}
+    Memory(Core &core): core(core) {}
     ~Memory();
 
     bool init();
@@ -48,7 +76,7 @@ public:
 #endif
 
 private:
-    Core *core;
+    Core &core;
 
     uint8_t arm9Ram[0x180000] = {}; // 1.5MB ARM9 internal RAM
     uint8_t vram[0x600000] = {}; // 6MB VRAM
@@ -68,6 +96,7 @@ private:
     uint8_t cfg9Sysprot9 = 0;
     uint8_t cfg9Sysprot11 = 0;
     uint32_t cfg9Extmemcnt9 = 0;
+    uint32_t cfg9Bootenv = 0;
     uint32_t prngSource[3] = {};
     uint32_t otpEncrypted[0x40] = {};
 
@@ -82,6 +111,7 @@ private:
     uint8_t readCfg9Sysprot9() { return cfg9Sysprot9; }
     uint8_t readCfg9Sysprot11() { return cfg9Sysprot11; }
     uint8_t readCfg9Extmemcnt9() { return cfg9Extmemcnt9; }
+    uint32_t readCfg9Bootenv() { return cfg9Bootenv; }
     uint32_t readPrngSource(int i);
     uint32_t readOtpEncrypted(int i) { return otpEncrypted[i]; }
 
@@ -93,11 +123,12 @@ private:
     void writeCfg9Sysprot9(uint8_t value);
     void writeCfg9Sysprot11(uint8_t value);
     void writeCfg9Extmemcnt9(uint32_t mask, uint32_t value);
+    void writeCfg9Bootenv(uint32_t mask, uint32_t value);
 };
 
 template <typename T> FORCE_INLINE T Memory::read(CpuId id, uint32_t address) {
     // Look up a readable memory pointer and load an LSB-first value if it exists
-    if (uint8_t *data = (id == ARM9 ? readMap9 : readMap11)[address >> 12]) {
+    if (uint8_t *data = (id == ARM9 ? memMap9 : memMap11)[address >> 12].read) {
         T value = 0;
         data += (address & 0xFFF);
         for (uint32_t i = 0; i < sizeof(T); i++)
@@ -108,8 +139,12 @@ template <typename T> FORCE_INLINE T Memory::read(CpuId id, uint32_t address) {
 }
 
 template <typename T> FORCE_INLINE void Memory::write(CpuId id, uint32_t address, T value) {
-    // Look up a writable memory pointer and store an LSB-first value if it exists
-    if (uint8_t *data = (id == ARM9 ? writeMap9 : writeMap11)[address >> 12]) {
+    // Look up a writable memory pointer and adjust its tag to signal change
+    MemMap &map = (id == ARM9 ? memMap9 : memMap11)[address >> 12];
+    map.tag++;
+
+    // Store an LSB-first value if the pointer exists, or fall back
+    if (uint8_t *data = map.write) {
         data += (address & 0xFFF);
         for (uint32_t i = 0; i < sizeof(T); i++)
             data[i] = value >> (i << 3);

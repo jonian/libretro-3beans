@@ -19,13 +19,16 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <functional>
 #include <mutex>
+#include <queue>
 #include <thread>
 
 class Core;
 class GpuRender;
-class GpuShaderInterp;
+class GpuShader;
 
 enum PrimMode {
     TRIANGLES,
@@ -197,7 +200,7 @@ struct GpuThreadTask {
 
 class Gpu {
 public:
-    Gpu(Core *core, std::function<void()> *contextFunc);
+    Gpu(Core &core, std::function<void()> *contextFunc);
     ~Gpu();
 
     void syncRender();
@@ -389,12 +392,12 @@ public:
     void writeUnkCmd(uint32_t mask, uint32_t value);
 
 private:
-    Core *core;
+    Core &core;
     std::function<void()> *contextFunc;
 
-    GpuShaderInterp *gpuShader = nullptr;
     GpuRender *gpuRender = nullptr;
-    int curRenderer = -1;
+    GpuShader *gpuShader = nullptr;
+    int renderType = -1, shaderType = -1;
 
     static void (Gpu::*cmdWrites[0x400])(uint32_t, uint32_t);
     static uint32_t maskTable[0x10];
@@ -411,6 +414,7 @@ private:
     bool shdMapDirty = false;
     bool fixedDirty = false;
     float fixedBase[16][4] = {};
+    float shdInput[16][4] = {};
     uint32_t attrFixedData[31][3] = {};
     uint8_t attrFixedIdx = 0;
 

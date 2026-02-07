@@ -43,7 +43,7 @@ struct CombOpcode {
 
 class GpuRenderSoft: public GpuRender {
 public:
-    GpuRenderSoft(Core *core): core(core) {}
+    GpuRenderSoft(Core &core): core(core) {}
 
     void submitVertex(SoftVertex &vertex);
     void flushBuffers() {}
@@ -87,7 +87,7 @@ public:
     void setDepthFunc(TestFunc func) { depthFunc = func; }
 
 private:
-    Core *core;
+    Core &core;
 
     static const uint8_t paramCounts[MODE_UNK + 1];
     static SoftColor zeroColor, oneColor;
@@ -151,6 +151,7 @@ private:
 
     template <bool doX> static SoftVertex interpolate(SoftVertex &v1, SoftVertex &v2, float x1, float x, float x2);
     static SoftVertex intersect(SoftVertex &v1, SoftVertex &v2, float x1, float x2);
+    static int32_t procTexCoord(float c, uint16_t size, TexWrap wrap);
     uint8_t stencilOp(uint8_t value, StenOper oper);
 
     void updateTexel(int i, float s, float t);

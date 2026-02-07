@@ -19,29 +19,40 @@
 
 #pragma once
 
-#include <cstdint>
 #include <epoxy/gl.h>
-
 #include "gpu_render.h"
 
 class Core;
+
+union VertexInput {
+    SoftVertex vertex;
+    float input[16][4];
+};
 
 struct TexCache {
     uint32_t addr;
     uint16_t width;
     uint16_t height;
     TexFmt fmt;
+
     GLuint tex;
+    uint32_t size;
+    uint32_t *tags;
 
     bool operator<(const TexCache &t) const { return addr < t.addr; }
 };
 
 class GpuRenderOgl: public GpuRender {
 public:
-    GpuRenderOgl(Core *core);
+    GpuRenderOgl(Core &core);
     ~GpuRenderOgl();
 
+    GLuint makeProgram(const char *vtxCode);
+    void setProgram(GLuint program);
+
+    void submitInput(float (*input)[4]);
     void submitVertex(SoftVertex &vertex);
+    void flushVertices();
     void flushBuffers();
 
     void setPrimMode(PrimMode mode);
@@ -83,26 +94,27 @@ public:
     void setDepthFunc(TestFunc func);
 
 private:
-    Core *core;
-    GLuint program;
+    Core &core;
+    GLint fragShader;
+    GLuint softProgram;
     GLuint vao, vbo;
     GLuint colBuf, depBuf;
     GLuint texture;
 
     GLint posScaleLoc;
-    GLint combSrcLocs[6][6];
-    GLint combOperLocs[6][6];
-    GLint combModeLocs[6][2];
-    GLint combColorLocs[6];
+    GLint combSrcsLoc;
+    GLint combOpersLoc;
+    GLint combModesLoc;
+    GLint combColorsLoc;
     GLint combBufColorLoc;
     GLint combBufMaskLoc;
     GLint alphaFuncLoc;
     GLint alphaValueLoc;
 
-    static const char *vtxCode;
+    static const char *vtxCodeSoft;
     static const char *fragCode;
 
-    std::vector<SoftVertex> vertices;
+    std::vector<VertexInput> vertices;
     std::vector<TexCache> texCache;
     GLint primMode = GL_TRIANGLES;
     uint8_t texDirty = 0;
@@ -116,8 +128,16 @@ private:
     TexFmt texFmts[3] = {};
     GLint texWrapS[3] = {};
     GLint texWrapT[3] = {};
+    GLint combSrcs[6 * 6] = {};
+    GLint combOpers[6 * 6] = {};
+    GLint combModes[6 * 2] = {};
+    float combColors[6][4] = {};
+    float combBufColor[4] = {};
+    uint8_t combBufMask = 0;
     GLenum blendOpers[4] = {};
     GLenum blendModes[2] = {};
+    TestFunc alphaFunc = TEST_AL;
+    float alphaValue = 0;
 
     GLsizei viewWidth = 0;
     GLsizei viewHeight = 0;
@@ -134,7 +154,6 @@ private:
     static uint32_t getSwizzle(int x, int y, int width);
     template <bool alpha> uint32_t etc1Texel(int i, int x, int y);
 
-    void flushVertices();
     void updateBuffers();
     void updateTextures();
     void updateViewport();
