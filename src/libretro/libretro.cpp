@@ -216,6 +216,7 @@ static void initConfig()
     { "3beans_cartAutoBoot", "Cart Auto Boot; enabled|disabled" },
     { "3beans_fpsLimiter", "FPS Limiter; enabled|disabled" },
     { "3beans_threadedGpu", "Threaded GPU; disabled|enabled" },
+    { "3beans_dspBackend", "DSP Backend; Interpreter|HLE" },
     { "3beans_screenArrangement", "Screen Arrangement; Vertical|Horizontal|Single Screen" },
     { "3beans_screenSizing", "Screen Sizing; Default|Enlarge Top|Enlarge Bottom" },
     { "3beans_screenPosition", "Screen Position; Center|Start|End" },
@@ -240,6 +241,7 @@ static void updateConfig()
   Settings::cartAutoBoot = fetchVariableBool("3beans_cartAutoBoot", true);
   Settings::fpsLimiter = fetchVariableBool("3beans_fpsLimiter", true);
   Settings::threadedGpu = fetchVariableBool("3beans_threadedGpu", false);
+  Settings::dspBackend = fetchVariableEnum("3beans_dspBackend", {"Interpreter", "HLE"});
 
   ScreenLayout::screenArrangement = fetchVariableEnum("3beans_screenArrangement", {"Vertical", "Horizontal", "Single Screen"});
   ScreenLayout::screenSizing = fetchVariableEnum("3beans_screenSizing", {"Default", "Enlarge Top", "Enlarge Bottom"});
