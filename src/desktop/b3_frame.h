@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -73,6 +73,7 @@ private:
     void stop(wxCommandEvent &event);
     void fpsLimiter(wxCommandEvent &event);
     void cartAutoBoot(wxCommandEvent &event);
+    template <int i> void dspBackend(wxCommandEvent &event);
     void threadedGpu(wxCommandEvent &event);
     template <int i> void gpuRenderer(wxCommandEvent &event);
     template <int i> void gpuShader(wxCommandEvent &event);

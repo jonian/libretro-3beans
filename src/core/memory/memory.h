@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -112,6 +112,7 @@ private:
     uint8_t readCfg9Sysprot11() { return cfg9Sysprot11; }
     uint8_t readCfg9Extmemcnt9() { return cfg9Extmemcnt9; }
     uint32_t readCfg9Bootenv() { return cfg9Bootenv; }
+    uint8_t readCfg9Unitinfo();
     uint32_t readPrngSource(int i);
     uint32_t readOtpEncrypted(int i) { return otpEncrypted[i]; }
 

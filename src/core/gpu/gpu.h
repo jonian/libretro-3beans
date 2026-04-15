@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -130,7 +130,8 @@ enum BlendOper {
     BLND_CONST,
     BLND_1MCON,
     BLND_CONSTA,
-    BLND_1MCONA
+    BLND_1MCONA,
+    BLND_ALPHSAT
 };
 
 enum TexFmt {

@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -458,7 +458,7 @@ void Gpu::writeBlendFunc(uint32_t mask, uint32_t value) {
     // Set the blend operands for the renderer if they're valid
     for (int i = 0; i < 4; i++) {
         uint8_t oper = (gpuBlendFunc >> (16 + (i * 4))) & 0xF;
-        if (oper < 0xE) {
+        if (oper < 0xF) {
             gpuRender->setBlendOper(i, BlendOper(oper));
             continue;
         }
@@ -580,8 +580,8 @@ void Gpu::writeColbufLoc(uint32_t mask, uint32_t value) {
 void Gpu::writeBufferDim(uint32_t mask, uint32_t value) {
     // Write to the render buffer dimensions and send them to the renderer
     mask &= 0x13FF7FF;
-    gpuColbufLoc = (gpuColbufLoc & ~mask) | (value & mask);
-    gpuRender->setBufferDims(gpuColbufLoc & 0x7FF, ((gpuColbufLoc >> 12) & 0x3FF) + 1, gpuColbufLoc & BIT(24));
+    gpuBufferDim = (gpuBufferDim & ~mask) | (value & mask);
+    gpuRender->setBufferDims(gpuBufferDim & 0x7FF, ((gpuBufferDim >> 12) & 0x3FF) + 1, gpuBufferDim & BIT(24));
 }
 
 void Gpu::writeAttrBase(uint32_t mask, uint32_t value) {

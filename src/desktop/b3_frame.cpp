@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -32,6 +32,8 @@ enum FrameEvent {
     STOP,
     FPS_LIMITER,
     CART_AUTO_BOOT,
+    DSP_INTERP,
+    DSP_HLE,
     THREADED_GPU,
     GPU_RENDER_SOFT,
     GPU_RENDER_OGL,
@@ -51,6 +53,8 @@ EVT_MENU(RESTART, b3Frame::restart)
 EVT_MENU(STOP, b3Frame::stop)
 EVT_MENU(FPS_LIMITER, b3Frame::fpsLimiter)
 EVT_MENU(CART_AUTO_BOOT, b3Frame::cartAutoBoot)
+EVT_MENU(DSP_INTERP, b3Frame::dspBackend<0>)
+EVT_MENU(DSP_HLE, b3Frame::dspBackend<1>)
 EVT_MENU(THREADED_GPU, b3Frame::threadedGpu)
 EVT_MENU(GPU_RENDER_SOFT, b3Frame::gpuRenderer<0>)
 EVT_MENU(GPU_RENDER_OGL, b3Frame::gpuRenderer<1>)
@@ -77,12 +81,17 @@ b3Frame::b3Frame(): wxFrame(nullptr, wxID_ANY, "3Beans") {
     systemMenu->Append(RESTART, "&Restart");
     systemMenu->Append(STOP, "&Stop");
 
-    // Set up the renderer submenu
+    // Set up the DSP backend submenu
+    wxMenu *dspMenu = new wxMenu();
+    dspMenu->AppendRadioItem(DSP_INTERP, "&Interpreter");
+    dspMenu->AppendRadioItem(DSP_HLE, "&HLE");
+
+    // Set up the GPU renderer submenu
     wxMenu *renderMenu = new wxMenu();
     renderMenu->AppendRadioItem(GPU_RENDER_SOFT, "&Software");
     renderMenu->AppendRadioItem(GPU_RENDER_OGL, "&OpenGL");
 
-    // Set up the shader submenu
+    // Set up the GPU shader submenu
     shaderMenu = new wxMenu();
     shaderMenu->AppendRadioItem(GPU_SHADER_INTERP, "&Interpreter");
     shaderMenu->AppendRadioItem(GPU_SHADER_GLSL, "&GLSL JIT");
@@ -91,6 +100,7 @@ b3Frame::b3Frame(): wxFrame(nullptr, wxID_ANY, "3Beans") {
     wxMenu *settingsMenu = new wxMenu();
     settingsMenu->AppendCheckItem(FPS_LIMITER, "&FPS Limiter");
     settingsMenu->AppendCheckItem(CART_AUTO_BOOT, "&Cart Auto-Boot");
+    settingsMenu->AppendSubMenu(dspMenu, "&DSP Backend");
     settingsMenu->AppendSeparator();
     settingsMenu->AppendCheckItem(THREADED_GPU, "&Threaded GPU");
     settingsMenu->AppendSubMenu(renderMenu, "&GPU Renderer");
@@ -143,6 +153,7 @@ b3Frame::b3Frame(): wxFrame(nullptr, wxID_ANY, "3Beans") {
     // Set the initial setting states
     settingsMenu->Check(FPS_LIMITER, Settings::fpsLimiter);
     settingsMenu->Check(CART_AUTO_BOOT, Settings::cartAutoBoot);
+    dspMenu->Check(DSP_INTERP + std::min(Settings::dspBackend, 1), true);
     settingsMenu->Check(THREADED_GPU, Settings::threadedGpu);
     renderMenu->Check(GPU_RENDER_SOFT + std::min(Settings::gpuRenderer, 1), true);
     shaderMenu->Check(GPU_SHADER_INTERP + std::min(Settings::gpuShader, 1), true);
@@ -150,11 +161,8 @@ b3Frame::b3Frame(): wxFrame(nullptr, wxID_ANY, "3Beans") {
     // Prepare a joystick if one is connected
     joystick = new wxJoystick();
     if (joystick->IsOk()) {
-        // Save initial axis values so inputs can be detected as offsets from resting
-        for (int i = 0; i < joystick->GetNumberAxes(); i++)
-            axisBases.push_back(joystick->GetPosition(i));
-
-        // Start a timer to update joystick input, since wxJoystickEvents are unreliable
+        // Initialize data and start the joystick update timer
+        axisBases.reserve(joystick->GetNumberAxes());
         timer = new wxTimer(this, UPDATE_JOYSTICK);
         timer->Start(10);
     }
@@ -204,6 +212,11 @@ void b3Frame::startCore(bool full) {
             return;
         }
     }
+
+    // Update the resting axis values so relative offsets can be taken
+    if (joystick)
+        for (int i = 0; i < joystick->GetNumberAxes(); i++)
+            axisBases[i] = joystick->GetPosition(i);
 
     // Start the core thread if not already running
     if (running.load()) return;
@@ -388,6 +401,12 @@ void b3Frame::cartAutoBoot(wxCommandEvent &event) {
     Settings::save();
 }
 
+template <int i> void b3Frame::dspBackend(wxCommandEvent &event) {
+    // Set the DSP backend to a specific value
+    Settings::dspBackend = i;
+    Settings::save();
+}
+
 void b3Frame::threadedGpu(wxCommandEvent &event) {
     // Toggle the threaded GPU setting
     Settings::threadedGpu = !Settings::threadedGpu;
@@ -430,6 +449,7 @@ void b3Frame::inputBindings(wxCommandEvent &event) {
 void b3Frame::updateJoystick(wxTimerEvent &event) {
     // Check the status of mapped joystick inputs
     int stickX = 0, stickY = 0;
+    int size = abs(joystick->GetXMax() - joystick->GetXMin()) / 2;
     for (int i = 0; i < MAX_KEYS; i++) {
         if (b3App::keyBinds[i] >= 3000 && joystick->GetNumberAxes() > b3App::keyBinds[i] - 3000) { // Axis -
             int j = b3App::keyBinds[i] - 3000;
@@ -437,30 +457,30 @@ void b3Frame::updateJoystick(wxTimerEvent &event) {
             case 12: // Stick Right
                 // Scale the axis position and apply it to the stick in the right direction
                 if (joystick->GetPosition(j) < axisBases[j])
-                    stickX -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetXMax();
+                    stickX += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             case 13: // Stick Left
                 // Scale the axis position and apply it to the stick in the left direction
                 if (joystick->GetPosition(j) < axisBases[j])
-                    stickX += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetXMin();
+                    stickX -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             case 14: // Stick Up
                 // Scale the axis position and apply it to the stick in the up direction
                 if (joystick->GetPosition(j) < axisBases[j])
-                    stickY += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetYMin();
+                    stickY -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             case 15: // Stick Down
                 // Scale the axis position and apply it to the stick in the down direction
                 if (joystick->GetPosition(j) < axisBases[j])
-                    stickY -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetYMax();
+                    stickY += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             default:
                 // Trigger a key press or release based on the axis position
-                if (joystick->GetPosition(j) < axisBases[j] - joystick->GetXMax() / 2)
+                if (joystick->GetPosition(j) - axisBases[j] < -size / 2)
                     pressKey(i);
                 else
                     releaseKey(i);
@@ -473,30 +493,30 @@ void b3Frame::updateJoystick(wxTimerEvent &event) {
             case 12: // Stick Right
                 // Scale the axis position and apply it to the stick in the right direction
                 if (joystick->GetPosition(j) > axisBases[j])
-                    stickX -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetXMax();
+                    stickX -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             case 13: // Stick Left
                 // Scale the axis position and apply it to the stick in the left direction
                 if (joystick->GetPosition(j) > axisBases[j])
-                    stickX += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetXMin();
+                    stickX += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             case 14: // Stick Up
                 // Scale the axis position and apply it to the stick in the up direction
                 if (joystick->GetPosition(j) > axisBases[j])
-                    stickY += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetYMin();
+                    stickY += (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             case 15: // Stick Down
                 // Scale the axis position and apply it to the stick in the down direction
                 if (joystick->GetPosition(j) > axisBases[j])
-                    stickY -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / joystick->GetYMax();
+                    stickY -= (joystick->GetPosition(j) - axisBases[j]) * 0x7FF / size;
                 continue;
 
             default:
                 // Trigger a key press or release based on the axis position
-                if (joystick->GetPosition(j) > axisBases[j] + joystick->GetXMax() / 2)
+                if (joystick->GetPosition(j) - axisBases[j] > size / 2)
                     pressKey(i);
                 else
                     releaseKey(i);

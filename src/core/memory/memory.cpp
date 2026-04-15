@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -171,6 +171,11 @@ template <typename T> void Memory::writeFallback(CpuId id, uint32_t address, T v
         LOG_CRIT("Unmapped ARM9 memory write: 0x%X\n", address);
     else
         LOG_CRIT("Unmapped ARM11 core %d memory write: 0x%X\n", id, address);
+}
+
+uint8_t Memory::readCfg9Unitinfo() {
+    // Read the unit type, which needs to be changed for development systems
+    return Settings::unitType;
 }
 
 uint32_t Memory::readPrngSource(int i) {

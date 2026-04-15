@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -26,6 +26,7 @@
 
 class b3App: public wxApp {
 public:
+    static int audBufSize;
     static int keyBinds[MAX_KEYS];
 
 private:

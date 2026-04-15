@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -46,7 +46,7 @@ public:
     GpuRenderSoft(Core &core): core(core) {}
 
     void submitVertex(SoftVertex &vertex);
-    void flushBuffers() {}
+    void flushBuffers(uint32_t mod = 0) {}
 
     void setPrimMode(PrimMode mode);
     void setCullMode(CullMode mode) { cullMode = mode; }

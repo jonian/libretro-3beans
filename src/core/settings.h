@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -34,9 +34,11 @@ struct Setting {
 namespace Settings {
     extern int fpsLimiter;
     extern int cartAutoBoot;
+    extern int dspBackend;
     extern int threadedGpu;
     extern int gpuRenderer;
     extern int gpuShader;
+    extern int unitType;
 
     extern std::string boot11Path;
     extern std::string boot9Path;

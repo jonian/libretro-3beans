@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -143,10 +143,10 @@ void PathDialog::openFolder(wxCommandEvent &event) {
 
 void PathDialog::confirm(wxCommandEvent &event) {
     // Update and save the path settings
-    Settings::boot11Path = boot11Path->GetValue().ToStdString();
-    Settings::boot9Path = boot9Path->GetValue().ToStdString();
-    Settings::nandPath = nandPath->GetValue().ToStdString();
-    Settings::sdPath = sdPath->GetValue().ToStdString();
+    Settings::boot11Path = boot11Path->GetLineText(0).ToStdString();
+    Settings::boot9Path = boot9Path->GetLineText(0).ToStdString();
+    Settings::nandPath = nandPath->GetLineText(0).ToStdString();
+    Settings::sdPath = sdPath->GetLineText(0).ToStdString();
     Settings::save();
     event.Skip(true);
 }

@@ -46,15 +46,16 @@ install a custom build by running the following commands:
 ```
 git clone --recursive https://github.com/wxWidgets/wxWidgets.git
 cd wxWidgets
-git reset --hard 1fd12d7bd6987603b8d63000a593a4286f5cad46
+git reset --hard 9720f1fdce0e11313d383a6ceb92275e7910e540
 ./configure --disable-sys-libs --disable-shared --disable-tests --without-libcurl
 make -j4
 sudo make install
 ```
 
-### Hardware References
+### References
 * [GBATEK](https://problemkaputt.de/gbatek.htm) - Incomplete but great reference for the 3DS hardware
 * [3DBrew](https://www.3dbrew.org) - Comprehensive wiki covering high- and low-level details
+* [libctru](https://github.com/devkitPro/libctru) - A homebrew library that shows how to interact with the OS
 * [Teakra](https://github.com/wwylele/teakra) - The only source for newer aspects of the Teak architecture
 * [Corgi3DS](https://github.com/PSI-Rockin/Corgi3DS) - The first LLE 3DS emulator, whose logs helped me debug
 

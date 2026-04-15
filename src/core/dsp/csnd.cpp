@@ -1,5 +1,5 @@
 /*
-    Copyright 2023-2025 Hydr8gon
+    Copyright 2023-2026 Hydr8gon
 
     This file is part of 3Beans.
 
@@ -352,5 +352,5 @@ void Csnd::writeSndexcnt(uint32_t mask, uint32_t value) {
         dspClock = CLK_48KHZ;
     else
         dspClock = CLK_33KHZ;
-    core.dsp.setAudClock(dspClock);
+    core.dsp->setAudClock(dspClock);
 }
