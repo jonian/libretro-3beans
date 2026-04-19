@@ -10,6 +10,9 @@
 
 #include "libretro.h"
 #include "screen_layout.h"
+#include "renderer.h"
+#include "renderer_soft.h"
+#include "utils.h"
 
 #include "../core/settings.h"
 #include "../core/core.h"
@@ -34,9 +37,7 @@ static std::string romPath;
 
 static Core *core;
 static ScreenLayout layout;
-
-static std::vector<uint32_t> videoBuffer;
-static uint32_t videoBufferSize;
+static VideoRenderer *videoRenderer;
 
 static std::string touchMode;
 static std::string screenSwapMode;
@@ -70,27 +71,6 @@ static int keymap[] = {
   RETRO_DEVICE_ID_JOYPAD_X,
   RETRO_DEVICE_ID_JOYPAD_Y
 };
-
-static int32_t clampValue(int32_t value, int32_t min, int32_t max)
-{
-  return std::max(min, std::min(max, value));
-}
-
-static bool endsWith(std::string str, std::string end)
-{
-  return str.find(end, str.length() - end.length()) != std::string::npos;
-}
-
-static std::string normalizePath(std::string path, bool addSlash = false)
-{
-  std::string newPath = path;
-  if (addSlash && newPath.back() != '/') newPath += '/';
-  if (!addSlash && newPath.back() == '/') newPath.erase(newPath.size() - 1);
-#ifdef WINDOWS
-  std::replace(newPath.begin(), newPath.end(), '\\', '/');
-#endif
-  return newPath;
-}
 
 static void logFallback(enum retro_log_level level, const char *fmt, ...)
 {
@@ -256,16 +236,7 @@ static void updateConfig()
 static void updateScreen()
 {
   layout.update(swapScreens);
-
-  auto bsize = layout.minWidth * layout.minHeight;
-
-  if (videoBufferSize != bsize)
-  {
-    videoBuffer.resize(bsize);
-    videoBufferSize = bsize;
-  }
-
-  memset(videoBuffer.data(), 0, videoBuffer.size() * sizeof(videoBuffer[0]));
+  videoRenderer->update(layout);
 
   retro_system_av_info info;
   retro_get_system_av_info(&info);
@@ -284,85 +255,6 @@ static void checkConfigVariables()
   }
 }
 
-static void drawCursor(uint32_t *data, int32_t pointX, int32_t pointY, int32_t size = 3)
-{
-  auto scale = layout.botWidth / 320;
-
-  uint32_t posX = clampValue(pointX, size, (layout.botWidth / scale) - size);
-  uint32_t posY = clampValue(pointY, size, (layout.botHeight / scale) - size);
-
-  uint32_t minX = layout.botX;
-  uint32_t maxX = layout.minWidth;
-
-  uint32_t minY = layout.botY;
-  uint32_t maxY = layout.minHeight;
-
-  uint32_t curX = layout.botX + (posX * scale);
-  uint32_t curY = layout.botY + (posY * scale);
-
-  uint32_t cursorSize = size * scale;
-
-  uint32_t startY = clampValue(curY - cursorSize, minY, maxY);
-  uint32_t endY = clampValue(curY + cursorSize, minY, maxY);
-
-  uint32_t startX = clampValue(curX - cursorSize, minX, maxX);
-  uint32_t endX = clampValue(curX + cursorSize, minX, maxX);
-
-  for (uint32_t y = startY; y < endY; y++)
-  {
-    for (uint32_t x = startX; x < endX; x++)
-    {
-      uint32_t& pixel = data[(y * maxX) + x];
-      pixel = (0xFFFFFF - pixel) | 0xFF000000;
-    }
-  }
-}
-
-static void copyScreen(uint32_t *src, uint32_t *dst, int sw, int sh, int dx, int dy, int dw, int dh, int stride)
-{
-  int scaleX = dw / sw;
-  int scaleY = dh / sh;
-
-  if ((scaleX >= 1 && scaleY >= 1) && (scaleX > 1 || scaleY > 1))
-  {
-    for (int y = 0; y < dh; ++y)
-    {
-      int srcY = (y / scaleY) * sw;
-      int dstY = (dy + y) * stride + dx;
-
-      for (int x = 0; x < dw; ++x)
-        dst[dstY + x] = src[srcY + (x / scaleX)];
-    }
-  }
-  else if (dx == 0 && dw == stride)
-  {
-    int pixels = dw * dh * sizeof(uint32_t);
-    int offset = dy * stride + dx;
-
-    memcpy(dst + offset, src, pixels);
-  }
-  else
-  {
-    int rowSize = dw * sizeof(uint32_t);
-
-    for (int y = 0; y < dh; ++y)
-    {
-      int srcY = y * sw;
-      int dstY = (dy + y) * stride + dx;
-
-      memcpy(dst + dstY, src + srcY, rowSize);
-    }
-  }
-}
-
-static inline uint32_t convertColor(uint32_t color)
-{
-  return 0xFF000000 |
-    ((color & 0x0000FF) << 16) |
-    ((color & 0x00FF00)) |
-    ((color & 0xFF0000) >> 16);
-}
-
 static void renderVideo()
 {
   static uint32_t bufferTop[400 * 240];
@@ -375,13 +267,7 @@ static void renderVideo()
       for (int i = 0; i < 400 * 240; i++)
         bufferTop[i] = convertColor(frame[i]);
 
-      copyScreen(
-        bufferTop, videoBuffer.data(),
-        400, 240,
-        layout.topX, layout.topY,
-        layout.topWidth, layout.topHeight,
-        layout.minWidth
-      );
+      videoRenderer->drawTopScreen(bufferTop, layout);
     }
 
     if (ScreenLayout::renderBotScreen)
@@ -390,23 +276,16 @@ static void renderVideo()
         for (int x = 0; x < 320; x++)
           bufferBot[y * 320 + x] = convertColor(frame[(y + 240) * 400 + (x + 40)]);
 
-      copyScreen(
-        bufferBot, videoBuffer.data(),
-        320, 240,
-        layout.botX, layout.botY,
-        layout.botWidth, layout.botHeight,
-        layout.minWidth
-      );
+      videoRenderer->drawBotScreen(bufferBot, layout);
 
       if (showTouchCursor && cursorVisible)
-        drawCursor(videoBuffer.data(), touchX, touchY);
+        videoRenderer->drawCursor(touchX, touchY, layout);
     }
 
     delete[] frame;
   }
 
-  uint32_t stride = layout.minWidth * 4;
-  videoCallback(videoBuffer.data(), layout.minWidth, layout.minHeight, stride);
+  videoRenderer->render(videoCallback, layout);
 }
 
 static void renderAudio()
@@ -441,6 +320,24 @@ static void updateCursorState()
   else
   {
     cursorVisible = true;
+  }
+}
+
+static bool createRenderer()
+{
+  try
+  {
+    if (videoRenderer) delete videoRenderer;
+
+    videoRenderer = new RendererSoft();
+    return true;
+  }
+  catch (CoreError e)
+  {
+    logCallback(RETRO_LOG_INFO, "Error initializing video renderer");
+
+    videoRenderer = nullptr;
+    return false;
   }
 }
 
@@ -545,10 +442,16 @@ bool retro_load_game(const struct retro_game_info* info)
   initConfig();
   updateConfig();
 
+  if (!createRenderer())
+    return false;
+
   initInput();
   updateScreen();
 
-  return createCore(romPath);
+  if (!createCore(romPath))
+    return false;
+
+  return true;
 }
 
 bool retro_load_game_special(unsigned type, const struct retro_game_info* info, size_t size)
@@ -559,6 +462,7 @@ bool retro_load_game_special(unsigned type, const struct retro_game_info* info, 
 void retro_unload_game(void)
 {
   if (core) delete core;
+  if (videoRenderer) delete videoRenderer;
 }
 
 void retro_reset(void)
