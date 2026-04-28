@@ -42,6 +42,9 @@
 #define QUAD_FILTER1 0xAC52
 #define QUAD_FILTER2 0xAC5C
 
+// Reserve memory in an area saved/restored by the OS (0x8400-0x8C3F)
+#define SAVE_STATE 0x8C30
+
 void DspHle::setAudClock(DspClock clock) {
     // Stop the HLE frame event if its clock is disabled
     if (clock == CLK_OFF) {
@@ -50,7 +53,7 @@ void DspHle::setAudClock(DspClock clock) {
     }
 
     // Set the frame event frequency and schedule it if newly enabled
-    cycles = ((clock == CLK_33KHZ) ? 8130 : 5589) * 8 * 20;
+    cycles = ((clock == CLK_33KHZ) ? 8192 : 5632) * 8 * 20;
     if (scheduled || state != STATE_RUNNING) return;
     core.schedule(DSP_HLE_UPDATE, cycles);
     scheduled = true;
@@ -95,6 +98,20 @@ void DspHle::update() {
         return;
 
     case STATE_RECEIVE1:
+        // Check if the resume command was received through pipe 2
+        if (core.memory.read<uint16_t>(ARM11, frameBase + (PIPE2_IN << 1)) == 2 && canRestore) {
+            // Read the save state address and clear it
+            uint32_t address = core.memory.read<uint32_t>(ARM11, 0x1FF40000 + (SAVE_STATE << 1));
+            core.memory.write<uint32_t>(ARM11, 0x1FF40000 + (SAVE_STATE << 1), 0);
+
+            // Restore DSP state from the address if it's valid
+            if (address >= 0x1FF68000 && address < 0x1FF70000) {
+                LOG_INFO("Restoring HLE DSP state from 0x%X\n", address);
+                for (uint32_t i = 0; i < sizeof(inputs); i += 4)
+                    ((uint32_t*)inputs)[i / 4] = core.memory.read<uint32_t>(ARM11, address + i);
+            }
+        }
+
         // Acknowledge pipe 2's input and set the ready semaphore
         sendResponse(2, 0x5);
         setSemaphore(15);
@@ -157,13 +174,21 @@ void DspHle::update() {
         return;
 
     case STATE_RESET1:
-        // Pretend to reply through pipe 2
+        // Write DSP state to untouched memory and its address to saved memory
+        LOG_INFO("Saving HLE DSP state to 0x%X\n", saveAddress);
+        for (uint32_t i = 0; i < sizeof(inputs); i += 4)
+            core.memory.write<uint32_t>(ARM11, saveAddress + i, ((uint32_t*)inputs)[i / 4]);
+        core.memory.write<uint32_t>(ARM11, 0x1FF40000 + (SAVE_STATE << 1), saveAddress);
+
+        // Adjust the address for next save, within untouched memory bounds
+        saveAddress += (sizeof(inputs) + 0x3) & ~0x3;
+        if (saveAddress + sizeof(inputs) >= 0x1FF70000)
+            saveAddress = 0x1FF68000;
+        canRestore = true;
+
+        // Pretend to reply through pipe 2 and send a reset signal
         sendResponse(2, 0x4);
         setSemaphore(15);
-
-        // Clear state and send a reset signal
-        memset(inputs, 0, sizeof(inputs));
-        outVolume = 1.0f;
         sendResponse(0, 0x1);
 
         // Wait for the final reset command
@@ -194,32 +219,32 @@ void DspHle::processFrame() {
 
     // Loop through inputs to update and mix them
     for (int i = 0; i < 24; i++) {
-        // Get an input's base addresses and dirty flags
+        // Get an input's dirty flags and clear them
         uint16_t cfgBase = INPUT_CONFIG + i * 0x60;
-        uint16_t stsBase = INPUT_STATUS + i * 0x6;
         uint32_t dirty = readData(cfgBase + 0x0) | (readData(cfgBase + 0x1) << 16);
         writeData(cfgBase + 0x0, 0), writeData(cfgBase + 0x1, 0);
         InputState &input = inputs[i];
         bool wasPlaying = (input.playFlags & BIT(0));
 
-        // Update the ADPCM coefficients if dirty
-        if (dirty & BIT(2)) {
+        // TODO: which bits are which?
+        if (dirty & (BIT(2) | BIT(4) | BIT(21) | BIT(30))) {
+            // Update embedded buffer parameters if dirty
+            input.buffers[4].address = (readData(cfgBase + 0x56) << 16) | readData(cfgBase + 0x57);
+            input.buffers[4].count = (readData(cfgBase + 0x58) << 16) | readData(cfgBase + 0x59);
+            input.buffers[4].adpcmPrev[0] = readData(cfgBase + 0x5C);
+            input.buffers[4].adpcmPrev[1] = readData(cfgBase + 0x5D);
+            input.buffers[4].seqId = readData(cfgBase + 0x5F);
+
+            // Update the ADPCM coefficients if dirty
             uint16_t coeffBase = ADPCM_COEFFS + i * 0x10;
             for (int j = 0; j < 8; j++) {
                 input.adpcmCoeffs[j][0] = readData(coeffBase + j * 2 + 0);
                 input.adpcmCoeffs[j][1] = readData(coeffBase + j * 2 + 1);
             }
-        }
 
-        // Update embedded buffer parameters if dirty
-        if (dirty & (BIT(4) | BIT(21) | BIT(30))) { // TODO: which bits are which?
+            // Update the position and format if dirty
             input.position = (readData(cfgBase + 0x52) << 16) | readData(cfgBase + 0x53);
-            input.buffers[4].address = (readData(cfgBase + 0x56) << 16) | readData(cfgBase + 0x57);
-            input.buffers[4].count = (readData(cfgBase + 0x58) << 16) | readData(cfgBase + 0x59);
             input.format = readData(cfgBase + 0x5A);
-            input.buffers[4].adpcmPrev[0] = readData(cfgBase + 0x5C);
-            input.buffers[4].adpcmPrev[1] = readData(cfgBase + 0x5D);
-            input.buffers[4].seqId = readData(cfgBase + 0x5F);
             wasPlaying = false; // Reset if playing
         }
 
@@ -301,11 +326,11 @@ void DspHle::processFrame() {
                         value = cur.adpcmPrev[0];
                         for (uint32_t p = position; p < uint32_t(input.position); p++) {
                             uint32_t block = (p / 14) * 8, sample = p % 14;
-                            uint8_t header = core.memory.read<uint8_t>(ARM11, cur.address + block);
+                            uint8_t header = core.memory.read<uint8_t>(ARM11, cur.address + block) & 0x7F;
                             int8_t nybble = core.memory.read<uint8_t>(ARM11, cur.address + block + sample / 2 + 1);
                             uint8_t shift = (header & 0xF) + 11;
                             int16_t *coeffs = input.adpcmCoeffs[header >> 4];
-                            nybble = int8_t((sample & 0x1) ? nybble : (nybble << 4)) >> 4;
+                            nybble = int8_t(nybble << ((sample & 0x1) ? 4 : 0)) >> 4;
                             value = (nybble << shift) + coeffs[0] * cur.adpcmPrev[0] + coeffs[1] * cur.adpcmPrev[1];
                             value = std::max(-0x8000, std::min(0x7FFF, (value + 0x400) >> 11));
                             cur.adpcmPrev[1] = cur.adpcmPrev[0];
@@ -345,6 +370,7 @@ void DspHle::processFrame() {
         }
 
         // Update the input status struct
+        uint16_t stsBase = INPUT_STATUS + i * 0x6;
         writeData(stsBase + 0x0, input.playFlags);
         writeData(stsBase + 0x1, input.syncCount);
         writeData(stsBase + 0x2, uint32_t(input.position) >> 16);
@@ -435,7 +461,7 @@ uint16_t DspHle::readRep(int i) {
 
 void DspHle::writePdata(uint16_t mask, uint16_t value) {
     // Write a value to DMA instantly and adjust the address
-    switch (dspPcfg >> 12) {
+    switch (uint8_t area = dspPcfg >> 12) {
         case 7: core.memory.write<uint16_t>(ARM11, dspPadr & ~0x1, value); break; // AHBM
         case 5: core.memory.write<uint16_t>(ARM11, 0x1FF00000 + (dspPadr << 1), value); break; // Code
         case 0: core.memory.write<uint16_t>(ARM11, 0x1FF40000 + (dspPadr << 1), value); break; // Data
@@ -468,7 +494,7 @@ void DspHle::writePcfg(uint16_t mask, uint16_t value) {
 
         // Fill the read DMA with all values instantly and adjust the address
         for (int i = 0; i < len; i++) {
-            switch (dspPcfg >> 12) {
+            switch (uint8_t area = dspPcfg >> 12) {
                 case 7: readFifo.push(core.memory.read<uint16_t>(ARM11, dspPadr & ~0x1)); break; // AHBM
                 case 5: readFifo.push(core.memory.read<uint16_t>(ARM11, 0x1FF00000 + (dspPadr << 1))); break; // Code
                 case 0: readFifo.push(core.memory.read<uint16_t>(ARM11, 0x1FF40000 + (dspPadr << 1))); break; // Data
@@ -496,6 +522,8 @@ void DspHle::writePcfg(uint16_t mask, uint16_t value) {
     // Reset HLE DSP if the backend is unchanged
     LOG_INFO("Restarting HLE DSP execution\n");
     state = STATE_HANDSHAKE0;
+    memset(inputs, 0, sizeof(inputs));
+    outVolume = 1.0f;
     frameBase = 0x1FF40000;
 }
 

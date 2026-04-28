@@ -85,7 +85,7 @@ void Gpu::syncRender() {
     destroyRender();
     createRender();
 
-    // Restore the renderer state
+    // Restore the renderer base state
     if (renderType == 1) (*contextFunc)();
     writeFaceCulling(0xFFFFFFFF, gpuFaceCulling);
     writeViewScaleH(0xFFFFFFFF, gpuViewScaleH);
@@ -147,9 +147,128 @@ void Gpu::syncRender() {
     writeColbufLoc(0xFFFFFFFF, gpuColbufLoc);
     writeBufferDim(0xFFFFFFFF, gpuBufferDim);
     writePrimRestart(0xFFFFFFFF, gpuPrimRestart);
-    if (renderType == 1) (*contextFunc)();
 
-    // Restore the shader state
+    // Restore the renderer light state
+    writeLightSpec0<0>(0xFFFFFFFF, gpuLightSpec0[0]);
+    writeLightSpec0<1>(0xFFFFFFFF, gpuLightSpec0[1]);
+    writeLightSpec0<2>(0xFFFFFFFF, gpuLightSpec0[2]);
+    writeLightSpec0<3>(0xFFFFFFFF, gpuLightSpec0[3]);
+    writeLightSpec0<4>(0xFFFFFFFF, gpuLightSpec0[4]);
+    writeLightSpec0<5>(0xFFFFFFFF, gpuLightSpec0[5]);
+    writeLightSpec0<6>(0xFFFFFFFF, gpuLightSpec0[6]);
+    writeLightSpec0<7>(0xFFFFFFFF, gpuLightSpec0[7]);
+    writeLightSpec1<0>(0xFFFFFFFF, gpuLightSpec1[0]);
+    writeLightSpec1<1>(0xFFFFFFFF, gpuLightSpec1[1]);
+    writeLightSpec1<2>(0xFFFFFFFF, gpuLightSpec1[2]);
+    writeLightSpec1<3>(0xFFFFFFFF, gpuLightSpec1[3]);
+    writeLightSpec1<4>(0xFFFFFFFF, gpuLightSpec1[4]);
+    writeLightSpec1<5>(0xFFFFFFFF, gpuLightSpec1[5]);
+    writeLightSpec1<6>(0xFFFFFFFF, gpuLightSpec1[6]);
+    writeLightSpec1<7>(0xFFFFFFFF, gpuLightSpec1[7]);
+    writeLightDiff<0>(0xFFFFFFFF, gpuLightDiff[0]);
+    writeLightDiff<1>(0xFFFFFFFF, gpuLightDiff[1]);
+    writeLightDiff<2>(0xFFFFFFFF, gpuLightDiff[2]);
+    writeLightDiff<3>(0xFFFFFFFF, gpuLightDiff[3]);
+    writeLightDiff<4>(0xFFFFFFFF, gpuLightDiff[4]);
+    writeLightDiff<5>(0xFFFFFFFF, gpuLightDiff[5]);
+    writeLightDiff<6>(0xFFFFFFFF, gpuLightDiff[6]);
+    writeLightDiff<7>(0xFFFFFFFF, gpuLightDiff[7]);
+    writeLightAmb<0>(0xFFFFFFFF, gpuLightAmb[0]);
+    writeLightAmb<1>(0xFFFFFFFF, gpuLightAmb[1]);
+    writeLightAmb<2>(0xFFFFFFFF, gpuLightAmb[2]);
+    writeLightAmb<3>(0xFFFFFFFF, gpuLightAmb[3]);
+    writeLightAmb<4>(0xFFFFFFFF, gpuLightAmb[4]);
+    writeLightAmb<5>(0xFFFFFFFF, gpuLightAmb[5]);
+    writeLightAmb<6>(0xFFFFFFFF, gpuLightAmb[6]);
+    writeLightAmb<7>(0xFFFFFFFF, gpuLightAmb[7]);
+    writeLightVecL<0>(0xFFFFFFFF, gpuLightVecL[0]);
+    writeLightVecL<1>(0xFFFFFFFF, gpuLightVecL[1]);
+    writeLightVecL<2>(0xFFFFFFFF, gpuLightVecL[2]);
+    writeLightVecL<3>(0xFFFFFFFF, gpuLightVecL[3]);
+    writeLightVecL<4>(0xFFFFFFFF, gpuLightVecL[4]);
+    writeLightVecL<5>(0xFFFFFFFF, gpuLightVecL[5]);
+    writeLightVecL<6>(0xFFFFFFFF, gpuLightVecL[6]);
+    writeLightVecL<7>(0xFFFFFFFF, gpuLightVecL[7]);
+    writeLightVecH<0>(0xFFFFFFFF, gpuLightVecH[0]);
+    writeLightVecH<1>(0xFFFFFFFF, gpuLightVecH[1]);
+    writeLightVecH<2>(0xFFFFFFFF, gpuLightVecH[2]);
+    writeLightVecH<3>(0xFFFFFFFF, gpuLightVecH[3]);
+    writeLightVecH<4>(0xFFFFFFFF, gpuLightVecH[4]);
+    writeLightVecH<5>(0xFFFFFFFF, gpuLightVecH[5]);
+    writeLightVecH<6>(0xFFFFFFFF, gpuLightVecH[6]);
+    writeLightVecH<7>(0xFFFFFFFF, gpuLightVecH[7]);
+    writeLightSpotL<0>(0xFFFFFFFF, gpuLightSpotL[0]);
+    writeLightSpotL<1>(0xFFFFFFFF, gpuLightSpotL[1]);
+    writeLightSpotL<2>(0xFFFFFFFF, gpuLightSpotL[2]);
+    writeLightSpotL<3>(0xFFFFFFFF, gpuLightSpotL[3]);
+    writeLightSpotL<4>(0xFFFFFFFF, gpuLightSpotL[4]);
+    writeLightSpotL<5>(0xFFFFFFFF, gpuLightSpotL[5]);
+    writeLightSpotL<6>(0xFFFFFFFF, gpuLightSpotL[6]);
+    writeLightSpotL<7>(0xFFFFFFFF, gpuLightSpotL[7]);
+    writeLightSpotH<0>(0xFFFFFFFF, gpuLightSpotH[0]);
+    writeLightSpotH<1>(0xFFFFFFFF, gpuLightSpotH[1]);
+    writeLightSpotH<2>(0xFFFFFFFF, gpuLightSpotH[2]);
+    writeLightSpotH<3>(0xFFFFFFFF, gpuLightSpotH[3]);
+    writeLightSpotH<4>(0xFFFFFFFF, gpuLightSpotH[4]);
+    writeLightSpotH<5>(0xFFFFFFFF, gpuLightSpotH[5]);
+    writeLightSpotH<6>(0xFFFFFFFF, gpuLightSpotH[6]);
+    writeLightSpotH<7>(0xFFFFFFFF, gpuLightSpotH[7]);
+    writeLightConfig<0>(0xFFFFFFFF, gpuLightConfig[0]);
+    writeLightConfig<1>(0xFFFFFFFF, gpuLightConfig[1]);
+    writeLightConfig<2>(0xFFFFFFFF, gpuLightConfig[2]);
+    writeLightConfig<3>(0xFFFFFFFF, gpuLightConfig[3]);
+    writeLightConfig<4>(0xFFFFFFFF, gpuLightConfig[4]);
+    writeLightConfig<5>(0xFFFFFFFF, gpuLightConfig[5]);
+    writeLightConfig<6>(0xFFFFFFFF, gpuLightConfig[6]);
+    writeLightConfig<7>(0xFFFFFFFF, gpuLightConfig[7]);
+    writeLightAtnBias<0>(0xFFFFFFFF, gpuLightAtnBias[0]);
+    writeLightAtnBias<1>(0xFFFFFFFF, gpuLightAtnBias[1]);
+    writeLightAtnBias<2>(0xFFFFFFFF, gpuLightAtnBias[2]);
+    writeLightAtnBias<3>(0xFFFFFFFF, gpuLightAtnBias[3]);
+    writeLightAtnBias<4>(0xFFFFFFFF, gpuLightAtnBias[4]);
+    writeLightAtnBias<5>(0xFFFFFFFF, gpuLightAtnBias[5]);
+    writeLightAtnBias<6>(0xFFFFFFFF, gpuLightAtnBias[6]);
+    writeLightAtnBias<7>(0xFFFFFFFF, gpuLightAtnBias[7]);
+    writeLightAtnScl<0>(0xFFFFFFFF, gpuLightAtnScl[0]);
+    writeLightAtnScl<1>(0xFFFFFFFF, gpuLightAtnScl[1]);
+    writeLightAtnScl<2>(0xFFFFFFFF, gpuLightAtnScl[2]);
+    writeLightAtnScl<3>(0xFFFFFFFF, gpuLightAtnScl[3]);
+    writeLightAtnScl<4>(0xFFFFFFFF, gpuLightAtnScl[4]);
+    writeLightAtnScl<5>(0xFFFFFFFF, gpuLightAtnScl[5]);
+    writeLightAtnScl<6>(0xFFFFFFFF, gpuLightAtnScl[6]);
+    writeLightAtnScl<7>(0xFFFFFFFF, gpuLightAtnScl[7]);
+    writeLightBaseAmb(0xFFFFFFFF, gpuLightBaseAmb);
+    writeLightTotal(0xFFFFFFFF, gpuLightTotal);
+    writeLightConfig0(0xFFFFFFFF, gpuLightConfig0);
+    writeLightConfig1(0xFFFFFFFF, gpuLightConfig1);
+    writeLightLutAbs(0xFFFFFFFF, gpuLightLutAbs);
+    writeLightLutSel(0xFFFFFFFF, gpuLightLutSel);
+    writeLightLutScl(0xFFFFFFFF, gpuLightLutScl);
+    writeLightIds(0xFFFFFFFF, gpuLightIds);
+
+    // Restore the renderer light tables
+    uint32_t backup = gpuLightLutIdx;
+    writeLightLutIdx(0xFFFFFFFF, LUT_D0 << 8);
+    for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutD0[i]);
+    writeLightLutIdx(0xFFFFFFFF, LUT_D1 << 8);
+    for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutD1[i]);
+    writeLightLutIdx(0xFFFFFFFF, LUT_FR << 8);
+    for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutFr[i]);
+    writeLightLutIdx(0xFFFFFFFF, LUT_RB << 8);
+    for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutRb[i]);
+    writeLightLutIdx(0xFFFFFFFF, LUT_RG << 8);
+    for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutRg[i]);
+    writeLightLutIdx(0xFFFFFFFF, LUT_RR << 8);
+    for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutRr[i]);
+    for (int t = 0; t < 8; t++) {
+        writeLightLutIdx(0xFFFFFFFF, (LUT_SP0 + t) << 8);
+        for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutSp[t][i]);
+        writeLightLutIdx(0xFFFFFFFF, (LUT_DA0 + t) << 8);
+        for (int i = 0; i < 0x100; i++) writeLightLutData(0xFFFFFFFF, gpuLightLutDa[t][i]);
+    }
+    writeLightLutIdx(0xFFFFFFFF, backup);
+
+    // Restore the shader base state
     writeGshConfig(0xFFFFFFFF, gpuGshConfig);
     writeVshOutTotal(0xFFFFFFFF, gpuVshOutTotal);
     writeGshBools(0xFFFFFFFF, gpuGshBools);
@@ -162,13 +281,28 @@ void Gpu::syncRender() {
     writeVshInts<1>(0xFFFFFFFF, gpuVshInts[1]);
     writeVshInts<2>(0xFFFFFFFF, gpuVshInts[2]);
     writeVshEntry(0xFFFFFFFF, gpuVshEntry);
+    shdMapDirty = true;
+
+    // Restore the shader array state
     for (int i = 0; i < 96; i++) gpuShader->setGshFloats(i, &gshFloats[i * 4]);
     for (int i = 0; i < 0x1000; i++) gpuShader->setGshCode(i, gshCode[i]);
     for (int i = 0; i < 0x80; i++) gpuShader->setGshDesc(i, gshDesc[i]);
     for (int i = 0; i < 96; i++) gpuShader->setVshFloats(i, &vshFloats[i * 4]);
     for (int i = 0; i < 0x200; i++) gpuShader->setVshCode(i, vshCode[i]);
     for (int i = 0; i < 0x80; i++) gpuShader->setVshDesc(i, vshDesc[i]);
-    shdMapDirty = true;
+    if (renderType == 1) (*contextFunc)();
+}
+
+void Gpu::addThreadTask(GpuTaskType type, void *data) {
+    // Add a thread task to the queue
+    uint16_t end = taskEnd.load();
+    taskBuffer[end] = { type, data };
+    end = (end + 1) & 0xFFF;
+
+    // Wait for a task to be processed if full
+    uint16_t start = taskStart.load();
+    while (end == start) start = taskStart.load();
+    taskEnd.store(end);
 }
 
 void Gpu::runThreaded() {
@@ -179,21 +313,18 @@ void Gpu::runThreaded() {
     // Process GPU thread tasks
     while (true) {
         // Wait for more tasks or finish and release context if stopped
-        while (tasks.empty()) {
+        uint16_t start = taskStart.load();
+        if (start == taskEnd.load()) {
             if (!running.load()) {
                 if (renderType == 1) (*contextFunc)();
                 return;
             }
             std::this_thread::yield();
+            continue;
         }
 
-        // Get and pop the next task from the queue
-        mutex.lock();
-        GpuThreadTask task = tasks.front();
-        tasks.pop();
-        mutex.unlock();
-
-        // Handle the task based on its type
+        // Get the next queued task and handle it
+        GpuThreadTask task = taskBuffer[start];
         switch (task.type) {
         case TASK_CMD: {
             // Decode a GPU command header
@@ -211,24 +342,25 @@ void Gpu::runThreaded() {
                 for (int i = 0; i < count; i++)
                     (this->*cmdWrites[cmd])(mask, cmds[i + 2]);
             delete[] cmds;
-            continue;
+            break;
         }
-
         case TASK_FILL: {
             // Start a GPU fill using saved register values
             GpuFillRegs *regs = (GpuFillRegs*)task.data;
             startFill(*regs);
             delete regs;
-            continue;
+            break;
         }
-
         case TASK_COPY: {
             // Start a GPU copy using saved register values
             GpuCopyRegs *regs = (GpuCopyRegs*)task.data;
             startCopy(*regs);
             delete regs;
-            continue;
+            break;
         }}
+
+        // Remove the task from the queue
+        taskStart.store((start + 1) & 0xFFF);
     }
 }
 
@@ -672,9 +804,7 @@ void Gpu::writeFillCnt(int i, uint32_t mask, uint32_t value) {
     // Start the fill now or forward it to the thread if running
     if (!thread) return startFill(gpuFill[i]);
     GpuFillRegs *regs = new GpuFillRegs(gpuFill[i]);
-    mutex.lock();
-    tasks.emplace(TASK_FILL, regs);
-    mutex.unlock();
+    addThreadTask(TASK_FILL, regs);
 }
 
 void Gpu::writeCopySrcAddr(uint32_t mask, uint32_t value) {
@@ -720,9 +850,7 @@ void Gpu::writeCopyCnt(uint32_t mask, uint32_t value) {
     // Start the copy now or forward it to the thread if running
     if (!thread) return startCopy(gpuCopy);
     GpuCopyRegs *regs = new GpuCopyRegs(gpuCopy);
-    mutex.lock();
-    tasks.emplace(TASK_COPY, regs);
-    mutex.unlock();
+    addThreadTask(TASK_COPY, regs);
 }
 
 void Gpu::writeCopyTexSize(uint32_t mask, uint32_t value) {

@@ -54,6 +54,8 @@ const char *GpuShaderGlsl::vtxBase = R"(
     out vec4 vtxColor;
     out vec3 vtxCoordsS;
     out vec3 vtxCoordsT;
+    out vec4 vtxNormQuat;
+    out vec3 vtxViewVec;
 
     uniform vec4 posScale;
     uniform vec4 floats[96];
@@ -153,6 +155,15 @@ void GpuShaderGlsl::processVtx(uint32_t idx) {
     vtxCode += "outRegs[" + std::to_string(outMap[0xD][0]) + "][" + std::to_string(outMap[0xD][1]) + "], ";
     vtxCode += "outRegs[" + std::to_string(outMap[0xF][0]) + "][" + std::to_string(outMap[0xF][1]) + "], ";
     vtxCode += "outRegs[" + std::to_string(outMap[0x17][0]) + "][" + std::to_string(outMap[0x17][1]) + "]);";
+    vtxCode += "\nvtxNormQuat = vec4(";
+    vtxCode += "outRegs[" + std::to_string(outMap[0x4][0]) + "][" + std::to_string(outMap[0x4][1]) + "], ";
+    vtxCode += "outRegs[" + std::to_string(outMap[0x5][0]) + "][" + std::to_string(outMap[0x5][1]) + "], ";
+    vtxCode += "outRegs[" + std::to_string(outMap[0x6][0]) + "][" + std::to_string(outMap[0x6][1]) + "], ";
+    vtxCode += "outRegs[" + std::to_string(outMap[0x7][0]) + "][" + std::to_string(outMap[0x7][1]) + "]);";
+    vtxCode += "\nvtxViewVec = vec3(";
+    vtxCode += "outRegs[" + std::to_string(outMap[0x12][0]) + "][" + std::to_string(outMap[0x12][1]) + "], ";
+    vtxCode += "outRegs[" + std::to_string(outMap[0x13][0]) + "][" + std::to_string(outMap[0x13][1]) + "], ";
+    vtxCode += "outRegs[" + std::to_string(outMap[0x14][0]) + "][" + std::to_string(outMap[0x14][1]) + "]);";
     vtxCode += "\n}";
 
     // Emit any additional functions that get called
@@ -506,13 +517,14 @@ void GpuShaderGlsl::shdJmpc(std::string &code, uint32_t opcode) {
 }
 
 void GpuShaderGlsl::shdJmpu(std::string &code, uint32_t opcode) {
-    // Emit code to break out of a jump block if a uniform bool is true
+    // Emit code to break out of a jump block if a uniform bool is true/false
     uint16_t dst = (opcode >> 10) & 0xFFF;
     if (dst < shdPc) {
         LOG_CRIT("Unhandled GLSL JIT jump opcode with negative offset\n");
         return;
     }
-    code += "if (bools[" + std::to_string((opcode >> 22) & 0xF) + "]) break;\n";
+    code += "if (bools[" + std::to_string((opcode >> 22) & 0xF) + "] == ";
+    code += std::string((opcode & BIT(0)) ? "false" : "true") + ") break;\n";
     jmpStack.push_back(dst);
 }
 
