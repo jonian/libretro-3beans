@@ -19,7 +19,11 @@
 
 #pragma once
 
+#ifdef __LIBRETRO__
+#include "../../libretro/glad/glad.h"
+#else
 #include <epoxy/gl.h>
+#endif
 #include "gpu_render.h"
 
 class Core;

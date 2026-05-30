@@ -1,14 +1,14 @@
 NAME := 3beans_libretro
 BUILD := build-libretro
 GIT_VERSION := $(shell git describe --abbrev=7 --always)
-SRCS := src src/core src/core/arm src/core/convert src/core/dsp src/core/gpu src/core/io src/core/memory src/libretro
-ARGS := -Ofast -flto -std=c++11 -D__LIBRETRO__ -DVERSION=\"$(GIT_VERSION)\"
-LIBS := $(shell pkg-config --libs epoxy)
-INCS := $(shell pkg-config --cflags epoxy)
+SRCS := src src/core src/core/arm src/core/convert src/core/dsp src/core/gpu src/core/io src/core/memory src/libretro src/libretro/glad
+ARGS := -Ofast -flto -D__LIBRETRO__ -DVERSION=\"$(GIT_VERSION)\"
 
 CPPFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.cpp))
+CFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.c))
 HFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.h))
 OFILES := $(patsubst %.cpp,$(BUILD)/%.o,$(CPPFILES))
+OFILES += $(patsubst %.c,$(BUILD)/%.o,$(CFILES))
 
 ifeq ($(platform),)
 	platform = unix
@@ -20,6 +20,8 @@ ifeq ($(platform),)
 		platform = win
 	endif
 endif
+
+CXXFLAGS := -std=c++11
 
 ifneq ($(findstring win,$(platform)),)
 	ARGS += -DWINDOWS
@@ -127,7 +129,8 @@ else
 	TARGET := $(NAME).so
 endif
 
-CFLAGS  += $(fpic) $(FLAGS) $(ARGS)
+CXXFLAGS += $(fpic) $(FLAGS) $(ARGS)
+CFLAGS += $(fpic) $(FLAGS) $(ARGS)
 LDFLAGS += $(fpic) $(SHARED)
 
 all: $(NAME)
@@ -140,7 +143,10 @@ else
 endif
 
 $(BUILD)/%.o: %.cpp $(HFILES) $(BUILD)
-	$(CXX) -c -o $@ $(CFLAGS) $(INCS) $<
+	$(CXX) -c -o $@ $(CXXFLAGS) $(INCS) $<
+
+$(BUILD)/%.o: %.c $(HFILES) $(BUILD)
+	$(CC) -c -o $@ $(CFLAGS) $(INCS) $<
 
 $(BUILD):
 	for dir in $(SRCS); do mkdir -p $(BUILD)/$$dir; done
