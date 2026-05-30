@@ -122,10 +122,16 @@ const char *GpuRenderOgl::fragCode = R"(
     vec4 prevColor = vec4(0.0, 0.0, 0.0, 0.0);
     vec4 combBuffer = combBufColor;
     vec4 fragColors[2];
+    float fragIdxs[7];
     bool fragDone = false;
 
     float dot3(vec3 c0, vec3 c1) {
         return 4.0 * c0.r - 0.5 * c1.r - 0.5 + c0.g - 0.5 * c1.g - 0.5 + c0.b - 0.5 * c1.b - 0.5;
+    }
+
+    float readLut(sampler1D lut, int i) {
+        float idx = (lutAbsFlags[i] != 0) ? abs(fragIdxs[lutInputs[i]]) : fragIdxs[lutInputs[i]];
+        return texture(lut, (idx * 0x7F + 0x80) / 0xFF).r * lutScales[i];
     }
 
     void updateFrag() {
@@ -145,39 +151,32 @@ const char *GpuRenderOgl::fragCode = R"(
             vec3 spotVec = normalize(lightSpot[id]);
             lightVec = normalize(lightVec);
 
-            float inp[7];
-            inp[0] = dot(normalVec, halfVec);
-            inp[1] = dot(viewVec, halfVec);
-            inp[2] = dot(normalVec, viewVec);
-            inp[3] = dot(lightVec, normalVec);
-            inp[4] = dot(-lightVec, spotVec);
-            inp[5] = inp[6] = 0.0;
+            fragIdxs[0] = dot(normalVec, halfVec);
+            fragIdxs[1] = dot(viewVec, halfVec);
+            fragIdxs[2] = dot(normalVec, viewVec);
+            fragIdxs[3] = dot(lightVec, normalVec);
+            fragIdxs[4] = dot(-lightVec, spotVec);
+            fragIdxs[5] = fragIdxs[6] = 0.0;
 
-            float idx = (lutAbsFlags[0] != 0) ? abs(inp[lutInputs[0]]) : inp[lutInputs[0]];
-            float d0 = ((lutMask & (1 << 0)) != 0) ? texture(lutD0, (idx * 0x7F + 0x80) / 0xFF).r * lutScales[0] : 1.0;
-            idx = (lutAbsFlags[1] != 0) ? abs(inp[lutInputs[1]]) : inp[lutInputs[1]];
-            float d1 = ((lutMask & (1 << 1)) != 0) ? texture(lutD1, (idx * 0x7F + 0x80) / 0xFF).r * lutScales[1] : 1.0;
-            idx = (lutAbsFlags[3] != 0) ? abs(inp[lutInputs[3]]) : inp[lutInputs[3]];
-            float fr = ((lutMask & (1 << 3)) != 0) ? texture(lutFr, (idx * 0x7F + 0x80) / 0xFF).r * lutScales[3] : 1.0;
-            idx = (lutAbsFlags[6] != 0) ? abs(inp[lutInputs[6]]) : inp[lutInputs[6]];
-            float rr = ((lutMask & (1 << 6)) != 0) ? texture(lutRr, (idx * 0x7F + 0x80) / 0xFF).r * lutScales[6] : 1.0;
-            idx = (lutAbsFlags[5] != 0) ? abs(inp[lutInputs[5]]) : inp[lutInputs[5]];
-            float rg = ((lutMask & (1 << 5)) != 0) ? texture(lutRg, (idx * 0x7F + 0x80) / 0xFF).r * lutScales[5] : rr;
-            idx = (lutAbsFlags[4] != 0) ? abs(inp[lutInputs[4]]) : inp[lutInputs[4]];
-            float rb = ((lutMask & (1 << 4)) != 0) ? texture(lutRb, (idx * 0x7F + 0x80) / 0xFF).r * lutScales[4] : rr;
+            float d0 = ((lutMask & (1 << 0)) != 0) ? readLut(lutD0, 0) : 1.0;
+            float d1 = ((lutMask & (1 << 1)) != 0) ? readLut(lutD1, 1) : 1.0;
+            float fr = ((lutMask & (1 << 3)) != 0) ? readLut(lutFr, 3) : 1.0;
+            float rr = ((lutMask & (1 << 6)) != 0) ? readLut(lutRr, 6) : 1.0;
+            float rg = ((lutMask & (1 << 5)) != 0) ? readLut(lutRg, 5) : rr;
+            float rb = ((lutMask & (1 << 4)) != 0) ? readLut(lutRb, 4) : rr;
             vec3 r = vec3(rr, rg, rb);
 
             float sp = 1.0;
             if ((lutMask & (1 << (8 + id))) != 0) {
-                idx = (lutAbsFlags[2] != 0) ? abs(inp[lutInputs[2]]) : inp[lutInputs[2]];
+                float idx = (lutAbsFlags[2] != 0) ? abs(fragIdxs[lutInputs[2]]) : fragIdxs[lutInputs[2]];
                 sp = texture(lutSp, vec2((idx * 0x7F + 0x80) / 0xFF, id)).r * lutScales[2];
             }
             if ((lutMask & (1 << (16 + id))) != 0) {
-                idx = lightAtten[id][0] + gl_FragCoord.z * lightAtten[id][1];
+                float idx = lightAtten[id][0] + gl_FragCoord.z * lightAtten[id][1];
                 sp *= texture(lutDa, vec2(idx, id)).r;
             }
 
-            fragColors[0] += vec4(sp * (lightAmb[id] + lightDiff[id] * inp[3]), fr);
+            fragColors[0] += vec4(sp * (lightAmb[id] + lightDiff[id] * fragIdxs[3]), fr);
             fragColors[1] += vec4(sp * (lightSpec0[id] * d0 + lightSpec1[id] * d1 * r), fr);
         }
         fragColors[0] = min(max(fragColors[0], 0.0), 1.0);
@@ -187,7 +186,7 @@ const char *GpuRenderOgl::fragCode = R"(
 
     vec4 getSrc(int i, int j) {
         vec4 color;
-        switch (combSrcs[i * 2 + ((j > 2) ? 1 : 0)][j % 3]) {
+        switch (combSrcs[i][j]) {
             case 0: color = vtxColor; break;
             case 1: if (!fragDone) updateFrag(); color = fragColors[0]; break;
             case 2: if (!fragDone) updateFrag(); color = fragColors[1]; break;
@@ -196,12 +195,12 @@ const char *GpuRenderOgl::fragCode = R"(
             case 5: color = texture(texUnits[2], vec2(vtxCoordsS[2], vtxCoordsT[2])); break;
             case 6: color = vec4(1.0, 1.0, 1.0, 1.0); break;
             case 7: color = combBuffer; break;
-            case 8: color = combColors[i]; break;
+            case 8: color = combColors[i / 2]; break;
             case 9: color = prevColor; break;
             default: color = vec4(0.0, 0.0, 0.0, 0.0); break;
         }
 
-        switch (combOpers[i * 2 + ((j > 2) ? 1 : 0)][j % 3]) {
+        switch (combOpers[i][j]) {
             default: return color;
             case 1: return 1.0 - color;
             case 2: return color.aaaa;
@@ -217,8 +216,8 @@ const char *GpuRenderOgl::fragCode = R"(
 
     void main() {
         vec4 color;
-        for (int i = 0; i < 6; i++) {
-            switch (combModes[i][0]) {
+        for (int i = 0; i < 12; i++) {
+            switch (combModes[i / 2][0]) {
                 case 0: color.rgb = getSrc(i, 0).rgb; break;
                 case 1: color.rgb = getSrc(i, 0).rgb * getSrc(i, 1).rgb; break;
                 case 2: color.rgb = getSrc(i, 0).rgb + getSrc(i, 1).rgb; break;
@@ -232,24 +231,23 @@ const char *GpuRenderOgl::fragCode = R"(
                 default: color.rgb = vec3(0.0, 0.0, 0.0); break;
             }
 
-            switch (combModes[i][1]) {
-                case 0: color.a = getSrc(i, 3).a; break;
-                case 1: color.a = getSrc(i, 3).a * getSrc(i, 4).a; break;
-                case 2: color.a = getSrc(i, 3).a + getSrc(i, 4).a; break;
-                case 3: color.a = getSrc(i, 3).a + getSrc(i, 4).a - 0.5; break;
-                case 4: color.a = mix(getSrc(i, 4).a, getSrc(i, 3).a, getSrc(i, 5).a); break;
-                case 5: color.a = getSrc(i, 3).a - getSrc(i, 4).a; break;
-                case 6: color.a = 1.0; break;
-                case 7: color.a = dot3(getSrc(i, 3).aaa, getSrc(i, 4).aaa); break;
-                case 8: color.a = (getSrc(i, 3).a * getSrc(i, 4).a) + getSrc(i, 5).a; break;
-                case 9: color.a = (getSrc(i, 3).a + getSrc(i, 4).a) * getSrc(i, 5).a; break;
+            switch (combModes[i++ / 2][1]) {
+                case 0: color.a = getSrc(i, 0).a; break;
+                case 1: color.a = getSrc(i, 0).a * getSrc(i, 1).a; break;
+                case 2: color.a = getSrc(i, 0).a + getSrc(i, 1).a; break;
+                case 3: color.a = getSrc(i, 0).a + getSrc(i, 1).a - 0.5; break;
+                case 4: color.a = mix(getSrc(i, 1).a, getSrc(i, 0).a, getSrc(i, 2).a); break;
+                case 5: color.a = getSrc(i, 0).a - getSrc(i, 1).a; break;
+                case 7: color.a = dot3(getSrc(i, 0).aaa, getSrc(i, 1).aaa); break;
+                case 8: color.a = (getSrc(i, 0).a * getSrc(i, 1).a) + getSrc(i, 2).a; break;
+                case 9: color.a = (getSrc(i, 0).a + getSrc(i, 1).a) * getSrc(i, 2).a; break;
                 default: color.a = 1.0; break;
             }
 
             prevColor = color;
-            if (i >= 4) continue;
-            if ((combBufMask & (0x01 << i)) != 0) combBuffer.rgb = color.rgb;
-            if ((combBufMask & (0x10 << i)) != 0) combBuffer.a = color.a;
+            if (i >= 8) continue;
+            if ((combBufMask & (0x01 << (i / 2))) != 0) combBuffer.rgb = color.rgb;
+            if ((combBufMask & (0x10 << (i / 2))) != 0) combBuffer.a = color.a;
         }
 
         switch (alphaFunc) {
@@ -904,7 +902,7 @@ void GpuRenderOgl::updateLuts() {
 void GpuRenderOgl::updateViewport() {
     // Update the viewport, adjusting Y-position when flipped
     GLint y = flipY ? (bufHeight - viewHeight) : 0;
-    glViewport(0, y, viewWidth, viewHeight);
+    glViewport(0 - viewX, y - viewY, viewWidth, viewHeight);
 }
 
 void GpuRenderOgl::setPrimMode(PrimMode mode) {
@@ -944,10 +942,11 @@ void GpuRenderOgl::setTexDims(int i, uint16_t width, uint16_t height) {
     texDirty |= BIT(i);
 }
 
-void GpuRenderOgl::setTexBorder(int i, float r, float g, float b, float a) {
+void GpuRenderOgl::setTexBorder(int i, float *color) {
     // Set a texture unit's border and mark it as dirty
     flushVertices();
-    texBorders[i][0] = r, texBorders[i][1] = g, texBorders[i][2] = b, texBorders[i][3] = a;
+    for (int j = 0; j < 4; j++)
+        texBorders[i][j] = color[j];
     texDirty |= BIT(i);
 }
 
@@ -958,23 +957,19 @@ void GpuRenderOgl::setTexFmt(int i, TexFmt format) {
     texDirty |= BIT(i);
 }
 
-void GpuRenderOgl::setTexWrapS(int i, TexWrap wrap) {
+void GpuRenderOgl::setTexWrap(int i, TexWrap wrapS, TexWrap wrapT) {
     // Set a texture unit's S-wrap and mark it as dirty
     flushVertices();
     texDirty |= BIT(i);
-    switch (wrap) {
-        case WRAP_CLAMP: texWrapS[i] = GL_CLAMP_TO_EDGE; return;
-        case WRAP_BORDER: texWrapS[i] = GL_CLAMP_TO_BORDER; return;
-        case WRAP_REPEAT: texWrapS[i] = GL_REPEAT; return;
-        case WRAP_MIRROR: texWrapS[i] = GL_MIRRORED_REPEAT; return;
+    switch (wrapS) {
+        case WRAP_CLAMP: texWrapS[i] = GL_CLAMP_TO_EDGE; break;
+        case WRAP_BORDER: texWrapS[i] = GL_CLAMP_TO_BORDER; break;
+        case WRAP_REPEAT: texWrapS[i] = GL_REPEAT; break;
+        case WRAP_MIRROR: texWrapS[i] = GL_MIRRORED_REPEAT; break;
     }
-}
 
-void GpuRenderOgl::setTexWrapT(int i, TexWrap wrap) {
-    // Set a texture unit's T-wrap and mark it as dirty
-    flushVertices();
-    texDirty |= BIT(i);
-    switch (wrap) {
+    // Set a texture unit's T-wrap
+    switch (wrapT) {
         case WRAP_CLAMP: texWrapT[i] = GL_CLAMP_TO_EDGE; return;
         case WRAP_BORDER: texWrapT[i] = GL_CLAMP_TO_BORDER; return;
         case WRAP_REPEAT: texWrapT[i] = GL_REPEAT; return;
@@ -982,38 +977,43 @@ void GpuRenderOgl::setTexWrapT(int i, TexWrap wrap) {
     }
 }
 
-void GpuRenderOgl::setCombSrc(int i, int j, CombSrc src) {
-    // Update one of the texture combiner source uniforms
+void GpuRenderOgl::setCombSrcs(int i, CombSrc *srcs) {
+    // Update a group of texture combiner source uniforms
     flushVertices();
-    combSrcs[i = i * 2 + (j > 2)][j % 3] = src;
-    glUniform3iv(combSrcsLoc + i, 1, combSrcs[i]);
+    for (int j = 0; j < 6; j++)
+        combSrcs[i * 2 + (j > 2)][j % 3] = srcs[j];
+    glUniform3iv(combSrcsLoc + i * 2, 2, combSrcs[i * 2]);
 }
 
-void GpuRenderOgl::setCombOper(int i, int j, CombOper oper) {
-    // Update one of the texture combiner operand uniforms
+void GpuRenderOgl::setCombOpers(int i, CombOper *opers) {
+    // Update a group of texture combiner operand uniforms
     flushVertices();
-    combOpers[i = i * 2 + (j > 2)][j % 3] = oper;
-    glUniform3iv(combOpersLoc + i, 1, combOpers[i]);
+    for (int j = 0; j < 6; j++)
+        combOpers[i * 2 + (j > 2)][j % 3] = opers[j];
+    glUniform3iv(combOpersLoc + i * 2, 2, combOpers[i * 2]);
 }
 
-void GpuRenderOgl::setCombMode(int i, int j, CalcMode mode) {
-    // Update one of the texture combiner mode uniforms
+void GpuRenderOgl::setCombModes(int i, CalcMode *modes) {
+    // Update a group of texture combiner mode uniforms
     flushVertices();
-    combModes[i][j] = mode;
+    for (int j = 0; j < 2; j++)
+        combModes[i][j] = modes[j];
     glUniform2iv(combModesLoc + i, 1, combModes[i]);
 }
 
-void GpuRenderOgl::setCombColor(int i, float r, float g, float b, float a) {
+void GpuRenderOgl::setCombColor(int i, float *color) {
     // Update one of the texture combiner color uniforms
     flushVertices();
-    combColors[i][0] = r, combColors[i][1] = g, combColors[i][2] = b, combColors[i][3] = a;
+    for (int j = 0; j < 4; j++)
+        combColors[i][j] = color[j];
     glUniform4fv(combColorsLoc + i, 1, combColors[i]);
 }
 
-void GpuRenderOgl::setCombBufColor(float r, float g, float b, float a) {
+void GpuRenderOgl::setCombBufColor(float *color) {
     // Update the texture combiner buffer color uniform
     flushVertices();
-    combBufColor[0] = r, combBufColor[1] = g, combBufColor[2] = b, combBufColor[3] = a;
+    for (int i = 0; i < 4; i++)
+        combBufColor[i] = color[i];
     glUniform4fv(combBufColorLoc, 1, combBufColor);
 }
 
@@ -1023,57 +1023,58 @@ void GpuRenderOgl::setCombBufMask(uint8_t mask) {
     glUniform1i(combBufMaskLoc, combBufMask = mask);
 }
 
-void GpuRenderOgl::setBlendOper(int i, BlendOper oper) {
-    // Update one of the source or destination RGB/alpha blend functions
+void GpuRenderOgl::setBlendOpers(BlendOper *opers) {
+    // Update the source and destination RGB/alpha blend functions
     flushVertices();
-    switch (oper) {
-        case BLND_ZERO: blendOpers[i] = GL_ZERO; break;
-        case BLND_ONE: blendOpers[i] = GL_ONE; break;
-        case BLND_SRC: blendOpers[i] = GL_SRC_COLOR; break;
-        case BLND_1MSRC: blendOpers[i] = GL_ONE_MINUS_SRC_COLOR; break;
-        case BLND_DST: blendOpers[i] = GL_DST_COLOR; break;
-        case BLND_1MDST: blendOpers[i] = GL_ONE_MINUS_DST_COLOR; break;
-        case BLND_SRCA: blendOpers[i] = GL_SRC_ALPHA; break;
-        case BLND_1MSRCA: blendOpers[i] = GL_ONE_MINUS_SRC_ALPHA; break;
-        case BLND_DSTA: blendOpers[i] = GL_DST_ALPHA; break;
-        case BLND_1MDSTA: blendOpers[i] = GL_ONE_MINUS_DST_ALPHA; break;
-        case BLND_CONST: blendOpers[i] = GL_CONSTANT_COLOR; break;
-        case BLND_1MCON: blendOpers[i] = GL_ONE_MINUS_CONSTANT_COLOR; break;
-        case BLND_CONSTA: blendOpers[i] = GL_CONSTANT_ALPHA; break;
-        case BLND_1MCONA: blendOpers[i] = GL_ONE_MINUS_CONSTANT_ALPHA; break;
-        case BLND_ALPHSAT: blendOpers[i] = GL_SRC_ALPHA_SATURATE; break;
+    GLenum blendOpers[4];
+    for (int i = 0; i < 4; i++) {
+        switch (opers[i]) {
+            case BLND_ZERO: blendOpers[i] = GL_ZERO; continue;
+            case BLND_ONE: blendOpers[i] = GL_ONE; continue;
+            case BLND_SRC: blendOpers[i] = GL_SRC_COLOR; continue;
+            case BLND_1MSRC: blendOpers[i] = GL_ONE_MINUS_SRC_COLOR; continue;
+            case BLND_DST: blendOpers[i] = GL_DST_COLOR; continue;
+            case BLND_1MDST: blendOpers[i] = GL_ONE_MINUS_DST_COLOR; continue;
+            case BLND_SRCA: blendOpers[i] = GL_SRC_ALPHA; continue;
+            case BLND_1MSRCA: blendOpers[i] = GL_ONE_MINUS_SRC_ALPHA; continue;
+            case BLND_DSTA: blendOpers[i] = GL_DST_ALPHA; continue;
+            case BLND_1MDSTA: blendOpers[i] = GL_ONE_MINUS_DST_ALPHA; continue;
+            case BLND_CONST: blendOpers[i] = GL_CONSTANT_COLOR; continue;
+            case BLND_1MCON: blendOpers[i] = GL_ONE_MINUS_CONSTANT_COLOR; continue;
+            case BLND_CONSTA: blendOpers[i] = GL_CONSTANT_ALPHA; continue;
+            case BLND_1MCONA: blendOpers[i] = GL_ONE_MINUS_CONSTANT_ALPHA; continue;
+            case BLND_ALPHSAT: blendOpers[i] = GL_SRC_ALPHA_SATURATE; continue;
+        }
     }
     glBlendFuncSeparate(blendOpers[0], blendOpers[1], blendOpers[2], blendOpers[3]);
 }
 
-void GpuRenderOgl::setBlendMode(int i, CalcMode mode) {
-    // Update one of the RGB or alpha blend equations
+void GpuRenderOgl::setBlendModes(CalcMode *modes) {
+    // Update the RGB and alpha blend equations
     flushVertices();
-    switch (mode) {
-        default: blendModes[i] = GL_FUNC_ADD; break;
-        case MODE_SUB: blendModes[i] = GL_FUNC_SUBTRACT; break;
-        case MODE_RSUB: blendModes[i] = GL_FUNC_REVERSE_SUBTRACT; break;
-        case MODE_MIN: blendModes[i] = GL_MIN; break;
-        case MODE_MAX: blendModes[i] = GL_MAX; break;
+    GLenum blendModes[2];
+    for (int i = 0; i < 2; i++) {
+        switch (modes[i]) {
+            default: blendModes[i] = GL_FUNC_ADD; continue;
+            case MODE_SUB: blendModes[i] = GL_FUNC_SUBTRACT; continue;
+            case MODE_RSUB: blendModes[i] = GL_FUNC_REVERSE_SUBTRACT; continue;
+            case MODE_MIN: blendModes[i] = GL_MIN; continue;
+            case MODE_MAX: blendModes[i] = GL_MAX; continue;
+        }
     }
     glBlendEquationSeparate(blendModes[0], blendModes[1]);
 }
 
-void GpuRenderOgl::setBlendColor(float r, float g, float b, float a) {
+void GpuRenderOgl::setBlendColor(float *color) {
     // Update the blend color
     flushVertices();
-    glBlendColor(r, g, b, a);
+    glBlendColor(color[0], color[1], color[2], color[3]);
 }
 
-void GpuRenderOgl::setAlphaFunc(TestFunc func) {
-    // Update the alpha test function uniform
+void GpuRenderOgl::setAlphaTest(TestFunc func, float value) {
+    // Update the alpha test function and value uniforms
     flushVertices();
     glUniform1i(alphaFuncLoc, alphaFunc = func);
-}
-
-void GpuRenderOgl::setAlphaValue(float value) {
-    // Update the alpha test reference uniform
-    flushVertices();
     glUniform1f(alphaValueLoc, alphaValue = value);
 }
 
@@ -1272,6 +1273,13 @@ void GpuRenderOgl::setViewScaleV(float scale) {
     // Update the viewport height
     flushVertices();
     viewHeight = scale * 2;
+    updateViewport();
+}
+
+void GpuRenderOgl::setViewOffset(int16_t x, int16_t y) {
+    // Update the viewport X/Y offsets
+    flushVertices();
+    viewX = x, viewY = y;
     updateViewport();
 }
 

@@ -3,8 +3,8 @@ BUILD := build
 META := meta
 SRCS := src src/core src/core/arm src/core/convert src/core/dsp src/core/gpu src/core/io src/core/memory src/desktop
 ARGS := -O3 -flto -std=c++11 -DLOG_LEVEL=0
-LIBS := $(shell wx-config --libs --gl-libs) $(shell pkg-config --libs portaudio-2.0 epoxy)
-INCS := $(shell wx-config --cxxflags) $(shell pkg-config --cflags portaudio-2.0 epoxy)
+LIBS := $(shell pkg-config --libs portaudio-2.0 epoxy)
+INCS := $(shell pkg-config --cflags portaudio-2.0 epoxy)
 
 APPNAME := 3Beans
 PKGNAME := com.hydra.threebeans
@@ -16,6 +16,8 @@ ifeq ($(OS),Windows_NT)
   LIBS += $(shell wx-config-static --libs --gl-libs) -lole32 -lsetupapi -lwinmm
   INCS += $(shell wx-config-static --cxxflags)
 else
+  LIBS += $(shell wx-config --libs --gl-libs)
+  INCS += $(shell wx-config --cxxflags)
   ifeq ($(shell uname -s),Darwin)
     ARGS += -DMACOS
     LIBS += -headerpad_max_install_names
@@ -28,6 +30,10 @@ endif
 CPPFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.cpp))
 HFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.h))
 OFILES := $(patsubst %.cpp,$(BUILD)/%.o,$(CPPFILES))
+
+ifeq ($(OS),Windows_NT)
+  OFILES += $(BUILD)/icon-windows.o
+endif
 
 all: $(NAME)
 
@@ -56,10 +62,12 @@ flatpak-clean:
 install: $(NAME)
 	install -Dm755 $(NAME) "$(DESTDIR)/bin/$(NAME)"
 	install -Dm644 $(META)/$(PKGNAME).desktop "$(DESTDIR)/share/applications/$(PKGNAME).desktop"
+	install -Dm644 icon/linux.png "$(DESTDIR)/share/icons/hicolor/256x256/apps/$(PKGNAME).png"
 
-uninstall: 
+uninstall:
 	rm -f "$(DESTDIR)/bin/$(NAME)"
 	rm -f "$(DESTDIR)/share/applications/$(PKGNAME).desktop"
+	rm -f "$(DESTDIR)/share/icons/hicolor/256x256/apps/$(PKGNAME).png"
 
 endif
 endif
@@ -69,6 +77,9 @@ $(NAME): $(OFILES)
 
 $(BUILD)/%.o: %.cpp $(HFILES) $(BUILD)
 	$(CXX) -c -o $@ $(ARGS) $(INCS) $<
+
+$(BUILD)/icon-windows.o:
+	windres $(shell wx-config-static --cppflags) icon/windows.rc $@
 
 $(BUILD):
 	for dir in $(SRCS); do mkdir -p $(BUILD)/$$dir; done
