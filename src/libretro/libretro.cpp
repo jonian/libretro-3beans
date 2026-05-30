@@ -257,26 +257,16 @@ static void checkConfigVariables()
 
 static void renderVideo()
 {
-  static uint32_t bufferTop[400 * 240];
-  static uint32_t bufferBot[320 * 240];
-
   if (uint32_t *frame = core->pdc.getFrame())
   {
     if (ScreenLayout::renderTopScreen)
     {
-      for (int i = 0; i < 400 * 240; i++)
-        bufferTop[i] = convertColor(frame[i]);
-
-      videoRenderer->drawTopScreen(bufferTop, layout);
+      videoRenderer->drawTopScreen(frame, layout);
     }
 
     if (ScreenLayout::renderBotScreen)
     {
-      for (int y = 0; y < 240; y++)
-        for (int x = 0; x < 320; x++)
-          bufferBot[y * 320 + x] = convertColor(frame[(y + 240) * 400 + (x + 40)]);
-
-      videoRenderer->drawBotScreen(bufferBot, layout);
+      videoRenderer->drawBotScreen(frame, layout);
 
       if (showTouchCursor && cursorVisible)
         videoRenderer->drawCursor(touchX, touchY, layout);

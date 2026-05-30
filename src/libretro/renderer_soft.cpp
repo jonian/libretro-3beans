@@ -24,8 +24,13 @@ void RendererSoft::update(ScreenLayout &layout)
 
 void RendererSoft::drawTopScreen(uint32_t *frame, ScreenLayout &layout)
 {
+  static uint32_t buffer[400 * 240];
+
+  for (int i = 0; i < 400 * 240; i++)
+    buffer[i] = convertColor(frame[i]);
+
   copyScreen(
-    frame, videoBuffer.data(),
+    buffer, videoBuffer.data(),
     400, 240,
     layout.topX, layout.topY,
     layout.topWidth, layout.topHeight,
@@ -35,8 +40,14 @@ void RendererSoft::drawTopScreen(uint32_t *frame, ScreenLayout &layout)
 
 void RendererSoft::drawBotScreen(uint32_t *frame, ScreenLayout &layout)
 {
+  static uint32_t buffer[320 * 240];
+
+  for (int y = 0; y < 240; y++)
+    for (int x = 0; x < 320; x++)
+      buffer[y * 320 + x] = convertColor(frame[(y + 240) * 400 + (x + 40)]);
+
   copyScreen(
-    frame, videoBuffer.data(),
+    buffer, videoBuffer.data(),
     320, 240,
     layout.botX, layout.botY,
     layout.botWidth, layout.botHeight,
@@ -77,43 +88,6 @@ void RendererSoft::drawCursor(int32_t pointX, int32_t pointY, ScreenLayout &layo
     {
       uint32_t& pixel = data[(y * maxX) + x];
       pixel = (0xFFFFFF - pixel) | 0xFF000000;
-    }
-  }
-}
-
-void RendererSoft::copyScreen(uint32_t *src, uint32_t *dst, int sw, int sh, int dx, int dy, int dw, int dh, int stride)
-{
-  int scaleX = dw / sw;
-  int scaleY = dh / sh;
-
-  if ((scaleX >= 1 && scaleY >= 1) && (scaleX > 1 || scaleY > 1))
-  {
-    for (int y = 0; y < dh; ++y)
-    {
-      int srcY = (y / scaleY) * sw;
-      int dstY = (dy + y) * stride + dx;
-
-      for (int x = 0; x < dw; ++x)
-        dst[dstY + x] = src[srcY + (x / scaleX)];
-    }
-  }
-  else if (dx == 0 && dw == stride)
-  {
-    int pixels = dw * dh * sizeof(uint32_t);
-    int offset = dy * stride + dx;
-
-    memcpy(dst + offset, src, pixels);
-  }
-  else
-  {
-    int rowSize = dw * sizeof(uint32_t);
-
-    for (int y = 0; y < dh; ++y)
-    {
-      int srcY = y * sw;
-      int dstY = (dy + y) * stride + dx;
-
-      memcpy(dst + dstY, src + srcY, rowSize);
     }
   }
 }
