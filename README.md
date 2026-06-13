@@ -12,8 +12,8 @@ full low-level emulation, and maybe explore some high-level elements down the ro
 and can be downloaded from the [releases page](https://github.com/Hydr8gon/3Beans/releases).
 
 ### Setup
-To function, 3Beans requires files dumped from an old or new 3DS system. Old 3DS is preferable for the best performance
-and stability, but either console with homebrew access will work. At minimum, you'll need `boot9.bin`, `boot11.bin`, and
+To function, 3Beans requires files dumped from a physical 3DS with homebrew access. Old 3DS is preferable for the best
+experience; new 3DS has more issues and is much slower. At minimum, you'll need `boot9.bin`, `boot11.bin`, and
 `nand.bin`, all of which can be obtained using [GodMode9](https://github.com/d0k3/GodMode9). You might also want to
 create `sd.img`, which can be any [FAT-formatted image file](https://kuribo64.net/get.php?id=mRJJ5GggXOPbKUMZ) to serve
 as an SD card. These files can be configured in the path settings.

@@ -233,6 +233,10 @@ struct GpuThreadTask {
 
 class Gpu {
 public:
+    GpuRender *gpuRender = nullptr;
+    GpuShader *gpuShader = nullptr;
+    int renderType = -1, shaderType = -1;
+
     Gpu(Core &core, std::function<void()> *contextFunc);
     ~Gpu();
 
@@ -471,10 +475,6 @@ public:
 private:
     Core &core;
     std::function<void()> *contextFunc;
-
-    GpuRender *gpuRender = nullptr;
-    GpuShader *gpuShader = nullptr;
-    int renderType = -1, shaderType = -1;
 
     static void (Gpu::*cmdWrites[0x400])(uint32_t, uint32_t);
     static uint32_t maskTable[0x10];

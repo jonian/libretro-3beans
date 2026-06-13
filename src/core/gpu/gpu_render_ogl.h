@@ -42,13 +42,25 @@ struct TexCache {
     bool operator<(const TexCache &t) const { return addr < t.addr; }
 };
 
+struct ProgramCache {
+    GLuint program;
+    GLint vtxShader;
+    GLint fragShader;
+};
+
+struct FragCache {
+    GLint shader;
+    uint32_t dataCrc;
+};
+
 class GpuRenderOgl: public GpuRender {
 public:
     GpuRenderOgl(Core &core);
     ~GpuRenderOgl();
 
-    GLuint makeProgram(const char *vtxCode);
-    void setProgram(GLuint program);
+    static uint32_t calcCrc32(uint8_t *data, uint32_t size);
+    static GLint makeShader(const char *code, bool frag);
+    void setShader(GLint shader, bool frag);
 
     void submitInput(float (*input)[4]);
     void submitVertex(SoftVertex &vertex);
@@ -110,11 +122,14 @@ public:
 
 private:
     Core &core;
-    GLint fragShader;
-    GLuint softProgram;
     GLuint vao, vbo;
     GLuint colBuf, depBuf;
     GLuint textures[9];
+
+    GLint vtxShader;
+    GLint fragShader;
+    GLint vtxShaderSoft;
+    GLint fragShaderUber;
 
     GLint posScaleLoc;
     GLint combSrcsLoc;
@@ -141,7 +156,13 @@ private:
     GLint lightMapLoc;
 
     static const char *vtxCodeSoft;
-    static const char *fragCode;
+    static const char *fragBase;
+    static const char *fragBodyUber;
+
+    std::vector<ProgramCache> programCache;
+    std::vector<FragCache> fragCache;
+    bool fragDirty = false;
+    bool useLights = false;
 
     std::vector<VertexInput> vertices;
     std::vector<TexCache> texCache;
@@ -158,14 +179,17 @@ private:
     TexFmt texFmts[3] = {};
     GLint texWrapS[3] = {};
     GLint texWrapT[3] = {};
-    GLint combSrcs[12][3] = {};
-    GLint combOpers[12][3] = {};
-    GLint combModes[6][2] = {};
-    GLfloat combColors[6][4] = {};
-    GLfloat combBufColor[4] = {};
-    uint8_t combBufMask = 0;
-    TestFunc alphaFunc = TEST_AL;
-    float alphaValue = 0;
+
+    struct CombData {
+        GLint combSrcs[12][3] = {};
+        GLint combOpers[12][3] = {};
+        GLint combModes[6][2] = {};
+        GLfloat combColors[6][4] = {};
+        GLfloat combBufColor[4] = {};
+        uint8_t combBufMask = 0;
+        TestFunc alphaFunc = TEST_AL;
+        float alphaValue = 0;
+    } cd;
 
     GLfloat lightSpec0[8][3] = {};
     GLfloat lightSpec1[8][3] = {};
@@ -211,4 +235,7 @@ private:
     void updateTextures();
     void updateLuts();
     void updateViewport();
+
+    std::string getSrc(int i, int j);
+    void updateFragShader();
 };

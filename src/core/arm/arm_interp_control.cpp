@@ -165,10 +165,13 @@ int ArmInterp::pld(uint32_t opcode) { // PLD address
 int ArmInterp::cps(uint32_t opcode) { // CPS[IE/ID] AIF,#mode
     // Optionally enable or disable interrupt flags
     if (opcode & BIT(19)) {
-        if (opcode & BIT(18)) // ID
+        if (opcode & BIT(18)) { // ID
             cpsr |= (opcode & 0xE0);
-        else // IE
+        }
+        else { // IE
             cpsr &= ~(opcode & 0xE0);
+            core.interrupts.checkInterrupt(id);
+        }
     }
 
     // Optionally change the CPU mode

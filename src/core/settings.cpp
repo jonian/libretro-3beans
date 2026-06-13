@@ -26,7 +26,8 @@ namespace Settings {
     int dspBackend = 0;
     int threadedGpu = 0;
     int gpuRenderer = 0;
-    int gpuShader = 0;
+    int gpuVtxShader = 0;
+    int gpuFragShader = 0;
     int unitType = 0;
 
     std::string boot11Path = "boot11.bin";
@@ -41,7 +42,8 @@ namespace Settings {
         Setting("dspBackend", &dspBackend, false),
         Setting("threadedGpu", &threadedGpu, false),
         Setting("gpuRenderer", &gpuRenderer, false),
-        Setting("gpuShader", &gpuShader, false),
+        Setting("gpuVtxShader", &gpuVtxShader, false),
+        Setting("gpuFragShader", &gpuFragShader, false),
         Setting("unitType", &unitType, false),
         Setting("boot11Path", &boot11Path, true),
         Setting("boot9Path", &boot9Path, true),

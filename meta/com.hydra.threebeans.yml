@@ -1,6 +1,6 @@
 app-id: com.hydra.threebeans
 runtime: org.freedesktop.Platform
-runtime-version: '21.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 command: 3beans
 
@@ -10,6 +10,7 @@ finish-args:
   - --socket=x11
   - --socket=pulseaudio
   - --filesystem=host
+  - --env=LD_LIBRARY_PATH=/app/lib64:/app/lib
 
 modules:
   - name: wxwidgets

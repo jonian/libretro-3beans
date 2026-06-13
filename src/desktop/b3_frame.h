@@ -44,7 +44,7 @@ public:
     void releaseScreen();
 
 private:
-    wxMenu *fileMenu, *systemMenu, *shaderMenu;
+    wxMenu *fileMenu, *systemMenu;
     wxWindow *canvas;
     wxJoystick *joystick;
     wxTimer *timer;
@@ -74,9 +74,7 @@ private:
     void fpsLimiter(wxCommandEvent &event);
     void cartAutoBoot(wxCommandEvent &event);
     template <int i> void dspBackend(wxCommandEvent &event);
-    void threadedGpu(wxCommandEvent &event);
-    template <int i> void gpuRenderer(wxCommandEvent &event);
-    template <int i> void gpuShader(wxCommandEvent &event);
+    void gpuSettings(wxCommandEvent &event);
     void pathSettings(wxCommandEvent &event);
     void inputBindings(wxCommandEvent &event);
     void updateJoystick(wxTimerEvent &event);

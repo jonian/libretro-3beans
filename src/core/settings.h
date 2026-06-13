@@ -37,7 +37,8 @@ namespace Settings {
     extern int dspBackend;
     extern int threadedGpu;
     extern int gpuRenderer;
-    extern int gpuShader;
+    extern int gpuVtxShader;
+    extern int gpuFragShader;
     extern int unitType;
 
     extern std::string boot11Path;

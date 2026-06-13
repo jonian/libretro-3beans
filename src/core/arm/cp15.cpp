@@ -205,7 +205,18 @@ uint32_t Cp15::readReg(CpuId id, uint8_t cn, uint8_t cm, uint8_t cp) {
     // Read a value from a CP15 register
     if (id != ARM9) { // ARM11
         switch ((cn << 16) | (cm << 8) | cp) {
+            case 0x000000: return 0x410FB025; // Main ID
+            case 0x000001: return 0x1D152152; // Cache type
             case 0x000005: return id; // CPU ID
+            case 0x000104: return 0x01100103; // Memory features 0
+            case 0x000105: return 0x10020302; // Memory features 1
+            case 0x000106: return 0x01222000; // Memory features 2
+            case 0x000107: return 0x00000000; // Memory features 3
+            case 0x000200: return 0x00100011; // ISA features 0
+            case 0x000201: return 0x12002111; // ISA features 1
+            case 0x000202: return 0x11221011; // ISA features 2
+            case 0x000203: return 0x01102131; // ISA features 3
+            case 0x000204: return 0x00000141; // ISA features 4
             case 0x010000: return ctrlRegs[id]; // Control
             case 0x020000: return tlbBase0Regs[id]; // TLB base 0
             case 0x020001: return tlbBase1Regs[id]; // TLB base 1

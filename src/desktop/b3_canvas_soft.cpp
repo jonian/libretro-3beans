@@ -17,7 +17,9 @@
     along with 3Beans. If not, see <https://www.gnu.org/licenses/>.
 */
 
+#include <wx/dcbuffer.h>
 #include <wx/rawbmp.h>
+
 #include "b3_canvas_soft.h"
 #include "b3_app.h"
 
@@ -32,13 +34,20 @@ EVT_LEFT_UP(b3CanvasSoft::releaseScreen)
 wxEND_EVENT_TABLE()
 
 b3CanvasSoft::b3CanvasSoft(b3Frame *frame): wxPanel(frame), frame(frame) {
+    // Prepare the canvas for drawing
+    SetBackgroundStyle(wxBG_STYLE_PAINT);
+    SetBackgroundColour(*wxBLACK);
+
     // Initialize data and set focus for key presses
     bitmap = wxBitmap(400, 480, 24);
-    frame->SendSizeEvent();
     SetFocus();
 }
 
 void b3CanvasSoft::draw(wxPaintEvent &event) {
+    // Ensure the layout has been set
+    if (!scrW || !scrH)
+        frame->SendSizeEvent();
+
     // Update bitmap data with a new framebuffer if one is available
     if (uint32_t *fb = frame->getFrame()) {
         wxNativePixelData data(bitmap);
@@ -57,10 +66,11 @@ void b3CanvasSoft::draw(wxPaintEvent &event) {
     }
 
     // Scale the bitmap and draw it
-    wxPaintDC dc(this);
+    wxAutoBufferedPaintDC dc(this);
     wxImage image = bitmap.ConvertToImage();
     image.Rescale(scrW, scrH, wxIMAGE_QUALITY_BILINEAR);
     wxBitmap scaled = wxBitmap(image);
+    dc.Clear();
     dc.DrawBitmap(scaled, wxPoint(scrX, scrY));
 }
 

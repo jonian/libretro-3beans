@@ -25,7 +25,10 @@ class Core;
 
 class I2c {
 public:
-    I2c(Core &core): core(core) {}
+    I2c(Core &core);
+    ~I2c();
+
+    void updateMcuRam();
     void mcuInterrupt(uint32_t mask);
 
     uint8_t readBusData(int i) { return i2cBusData[i]; }
@@ -37,21 +40,33 @@ public:
 private:
     Core &core;
 
-    uint32_t writeCount = 0;
-    uint8_t devAddr = 0;
-    uint8_t regAddr = 0;
+    uint32_t writeCounts[3] = {};
+    uint8_t devAddrs[3] = {};
+    uint8_t regAddrs[3] = {};
     bool mcuInc = false;
+    bool ramDirty = false;
 
     uint8_t i2cBusData[3] = {};
     uint8_t i2cBusCnt[3] = {};
 
     uint32_t mcuIrqFlags = 0;
     uint32_t mcuIrqMask = 0;
+    uint8_t mcuRamIdx = 0;
+    uint8_t mcuRamData[0xC8] = {};
+
+    uint8_t readMcu();
+    void writeMcu(uint8_t value);
 
     uint8_t readMcuIrqFlags(int i);
     uint8_t readMcuIrqMask(int i);
-    uint8_t readRtcValue(int i);
+    uint8_t readMcuRtcVal(int i);
+    uint8_t readMcuRamData();
 
     void writeMcuIrqMask(int i, uint8_t value);
     void writeMcuLcdPower(uint8_t value);
+    void writeMcuRamIdx(uint8_t value);
+    void writeMcuRamData(uint8_t value);
+
+    uint8_t readCam(int i);
+    void writeCam(int i, uint8_t value);
 };

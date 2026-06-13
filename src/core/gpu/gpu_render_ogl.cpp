@@ -22,6 +22,7 @@
 
 #include "../core.h"
 #include "gpu_render_ogl.h"
+#include "gpu_shader_glsl.h"
 
 enum RenderLoc {
     LOC_IN_POS = 0,
@@ -75,7 +76,7 @@ const char *GpuRenderOgl::vtxCodeSoft = R"(
     }
 )";
 
-const char *GpuRenderOgl::fragCode = R"(
+const char *GpuRenderOgl::fragBase = R"(
     #version 330
 
     in vec4 vtxColor;
@@ -119,7 +120,7 @@ const char *GpuRenderOgl::fragCode = R"(
     uniform sampler1DArray lutDa;
     uniform sampler2D texUnits[3];
 
-    vec4 prevColor = vec4(0.0, 0.0, 0.0, 0.0);
+    vec4 prevColor = vec4(0.0);
     vec4 combBuffer = combBufColor;
     vec4 fragColors[2];
     float fragIdxs[7];
@@ -142,7 +143,7 @@ const char *GpuRenderOgl::fragCode = R"(
         vec3 normalVec = normalize(vec3(x, y, z));
         vec3 viewVec = normalize(vtxViewVec);
         fragColors[0] = vec4(lightBaseAmb, 0.0);
-        fragColors[1] = vec4(0.0, 0.0, 0.0, 0.0);
+        fragColors[1] = vec4(0.0);
 
         for (int i = 0; lightMap[i] >= 0; i++) {
             int id = lightMap[i];
@@ -183,7 +184,9 @@ const char *GpuRenderOgl::fragCode = R"(
         fragColors[1] = min(max(fragColors[1], 0.0), 1.0);
         fragDone = true;
     }
+)";
 
+const char *GpuRenderOgl::fragBodyUber = R"(
     vec4 getSrc(int i, int j) {
         vec4 color;
         switch (combSrcs[i][j]) {
@@ -193,11 +196,11 @@ const char *GpuRenderOgl::fragCode = R"(
             case 3: color = texture(texUnits[0], vec2(vtxCoordsS[0], vtxCoordsT[0])); break;
             case 4: color = texture(texUnits[1], vec2(vtxCoordsS[1], vtxCoordsT[1])); break;
             case 5: color = texture(texUnits[2], vec2(vtxCoordsS[2], vtxCoordsT[2])); break;
-            case 6: color = vec4(1.0, 1.0, 1.0, 1.0); break;
+            case 6: color = vec4(1.0); break;
             case 7: color = combBuffer; break;
             case 8: color = combColors[i / 2]; break;
             case 9: color = prevColor; break;
-            default: color = vec4(0.0, 0.0, 0.0, 0.0); break;
+            default: color = vec4(0.0); break;
         }
 
         switch (combOpers[i][j]) {
@@ -228,7 +231,7 @@ const char *GpuRenderOgl::fragCode = R"(
                 case 7: color.rgb = vec3(dot3(getSrc(i, 0).rgb, getSrc(i, 1).rgb)); break;
                 case 8: color.rgb = (getSrc(i, 0).rgb * getSrc(i, 1).rgb) + getSrc(i, 2).rgb; break;
                 case 9: color.rgb = (getSrc(i, 0).rgb + getSrc(i, 1).rgb) * getSrc(i, 2).rgb; break;
-                default: color.rgb = vec3(0.0, 0.0, 0.0); break;
+                default: color.rgb = vec3(0.0); break;
             }
 
             switch (combModes[i++ / 2][1]) {
@@ -265,23 +268,12 @@ const char *GpuRenderOgl::fragCode = R"(
 )";
 
 GpuRenderOgl::GpuRenderOgl(Core &core): core(core) {
-    // Compile the default shader program for software vertices
-    fragShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragShader, 1, &fragCode, nullptr);
-    glCompileShader(fragShader);
-    softProgram = makeProgram(vtxCodeSoft);
-    setProgram(softProgram);
-
-    // Check for fragment compilation errors and log them
-    GLint res, size;
-    glGetShaderiv(fragShader, GL_COMPILE_STATUS, &res);
-    if (res == GL_FALSE) {
-        glGetShaderiv(fragShader, GL_INFO_LOG_LENGTH, &size);
-        GLchar *log = new GLchar[size];
-        glGetShaderInfoLog(fragShader, size, &size, log);
-        LOG_CRIT("Fragment shader GLSL compilation error: %s", log);
-        delete[] log;
-    }
+    // Compile the default vertex and fragment shaders
+    vtxShaderSoft = makeShader(vtxCodeSoft, false);
+    setShader(vtxShaderSoft, false);
+    std::string fragCodeUber = std::string(fragBase) + fragBodyUber;
+    fragShaderUber = makeShader(fragCodeUber.c_str(), true);
+    setShader(fragShaderUber, true);
 
     // Create array and buffer objects for the soft vertex shader
     glGenVertexArrays(1, &vao);
@@ -350,47 +342,77 @@ GpuRenderOgl::~GpuRenderOgl() {
         delete[] texCache[i].tags;
     }
 
+    // Clean up resources allocated in the shader caches
+    for (int i = 0; i < programCache.size(); i++)
+        glDeleteProgram(programCache[i].program);
+    for (int i = 0; i < fragCache.size(); i++)
+        glDeleteShader(fragCache[i].shader);
+
     // Clean up everything else that was generated
+    glDeleteShader(vtxShaderSoft);
+    glDeleteShader(fragShaderUber);
     glDeleteTextures(9, textures);
     glDeleteRenderbuffers(1, &depBuf);
     glDeleteFramebuffers(1, &colBuf);
     glDeleteBuffers(1, &vbo);
     glDeleteVertexArrays(1, &vao);
-    glDeleteProgram(softProgram);
-    glDeleteShader(fragShader);
 }
 
-GLuint GpuRenderOgl::makeProgram(const char *vtxCode) {
-    // Compile the provided vertex shader code
-    GLint vtxShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vtxShader, 1, &vtxCode, nullptr);
-    glCompileShader(vtxShader);
+uint32_t GpuRenderOgl::calcCrc32(uint8_t *data, uint32_t size) {
+    // Calculate a CRC32 for the given data
+    uint32_t crc = 0xFFFFFFFF;
+    for (int i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++)
+            crc = (crc & 0x1) ? ((crc >> 1) ^ 0xEDB88320) : (crc >> 1);
+    }
+    return crc;
+}
 
-    // Check for vertex compilation errors and log them
+GLint GpuRenderOgl::makeShader(const char *code, bool frag) {
+    // Compile the vertex or fragment shader code
+    GLint shader = glCreateShader(frag ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER);
+    glShaderSource(shader, 1, &code, nullptr);
+    glCompileShader(shader);
+
+    // Check for compilation errors and log them
     GLint res, size;
-    glGetShaderiv(vtxShader, GL_COMPILE_STATUS, &res);
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &res);
     if (res == GL_FALSE) {
-        glGetShaderiv(vtxShader, GL_INFO_LOG_LENGTH, &size);
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &size);
         GLchar *log = new GLchar[size];
-        glGetShaderInfoLog(vtxShader, size, &size, log);
-        LOG_CRIT("Vertex shader GLSL compilation error: %s", log);
+        glGetShaderInfoLog(shader, size, &size, log);
+        LOG_CRIT("%s shader GLSL compilation error: %s", frag ? "Fragment" : "Vertex", log);
         delete[] log;
     }
-
-    // Link a program using the shared fragment shader
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vtxShader);
-    glAttachShader(program, fragShader);
-    glLinkProgram(program);
-
-    // Clean up the shader and return the program
-    glDeleteShader(vtxShader);
-    return program;
+    return shader;
 }
 
-void GpuRenderOgl::setProgram(GLuint program) {
-    // Update the program and its uniform locations
-    glUseProgram(program);
+void GpuRenderOgl::setShader(GLint shader, bool frag) {
+    // Change the vertex or fragment shader
+    frag ? (fragShader = shader) : (vtxShader = shader);
+
+    // Check if a program with the current shaders is already cached
+    GLuint program = 0;
+    for (int i = 0; i < programCache.size(); i++) {
+        ProgramCache &c = programCache[i];
+        if (c.vtxShader != vtxShader || c.fragShader != fragShader) continue;
+        glUseProgram(program = c.program);
+        break;
+    }
+
+    // Cache a new program if one wasn't found
+    if (!program) {
+        program = glCreateProgram();
+        glAttachShader(program, vtxShader);
+        glAttachShader(program, fragShader);
+        glLinkProgram(program);
+        glUseProgram(program);
+        ProgramCache c = { program, vtxShader, fragShader };
+        programCache.push_back(c);
+    }
+
+    // Update uniform locations for the new program
     posScaleLoc = glGetUniformLocation(program, "posScale");
     combSrcsLoc = glGetUniformLocation(program, "combSrcs");
     combOpersLoc = glGetUniformLocation(program, "combOpers");
@@ -417,14 +439,14 @@ void GpuRenderOgl::setProgram(GLuint program) {
 
     // Restore uniform values for the new program
     glUniform4f(posScaleLoc, 1.0f, flipY ? -1.0f : 1.0f, -1.0f, 1.0f);
-    glUniform3iv(combSrcsLoc, 12, combSrcs[0]);
-    glUniform3iv(combOpersLoc, 12, combOpers[0]);
-    glUniform2iv(combModesLoc, 6, combModes[0]);
-    glUniform4fv(combColorsLoc, 6, combColors[0]);
-    glUniform4fv(combBufColorLoc, 1, combBufColor);
-    glUniform1i(combBufMaskLoc, combBufMask);
-    glUniform1i(alphaFuncLoc, alphaFunc);
-    glUniform1f(alphaValueLoc, alphaValue);
+    glUniform3iv(combSrcsLoc, 12, cd.combSrcs[0]);
+    glUniform3iv(combOpersLoc, 12, cd.combOpers[0]);
+    glUniform2iv(combModesLoc, 6, cd.combModes[0]);
+    glUniform4fv(combColorsLoc, 6, cd.combColors[0]);
+    glUniform4fv(combBufColorLoc, 1, cd.combBufColor);
+    glUniform1i(combBufMaskLoc, cd.combBufMask);
+    glUniform1i(alphaFuncLoc, cd.alphaFunc);
+    glUniform1f(alphaValueLoc, cd.alphaValue);
     glUniform3fv(lightSpec0Loc, 8, lightSpec0[0]);
     glUniform3fv(lightSpec1Loc, 8, lightSpec1[0]);
     glUniform3fv(lightDiffLoc, 8, lightDiff[0]);
@@ -451,6 +473,10 @@ void GpuRenderOgl::setProgram(GLuint program) {
     glUniform1i(glGetUniformLocation(program, "lutDa"), TEX_LUTDA);
     GLint loc = glGetUniformLocation(program, "texUnits");
     for (int i = 0; i < 3; i++) glUniform1i(loc + i, TEX_UNIT0 + i);
+
+    // Update vertex JIT uniforms as well if necessary
+    if (core.gpu.shaderType == 1)
+        ((GpuShaderGlsl*)core.gpu.gpuShader)->updateUniforms(program);
 }
 
 uint32_t GpuRenderOgl::getSwizzle(int x, int y, int width) {
@@ -535,6 +561,7 @@ void GpuRenderOgl::flushVertices() {
     if (readDirty) updateBuffers();
     if (texDirty) updateTextures();
     if (lutDirty) updateLuts();
+    if (fragDirty) updateFragShader();
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(VertexInput), &vertices[0], GL_DYNAMIC_DRAW);
     glDrawArrays(primMode, 0, vertices.size());
     vertices = {};
@@ -598,6 +625,52 @@ void GpuRenderOgl::flushBuffers(uint32_t mod) {
 }
 
 void GpuRenderOgl::updateBuffers() {
+    // Copy data from memory to the color buffer based on format if dirty
+    if (readDirty & BIT(0)) {
+        uint32_t *data = nullptr;
+        uint16_t w = bufWidth, h = bufHeight;
+        glActiveTexture(GL_TEXTURE0 + TEX_BUFFER);
+        switch (colbufFmt) {
+        case COL_RGBA8:
+            data = new uint32_t[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    data[y * w + x] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 4);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, data);
+            break;
+        case COL_RGB8:
+            data = new uint32_t[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    data[y * w + x] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 3 - 1) | 0xFF;
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, data);
+            break;
+        case COL_RGB565:
+            data = new uint32_t[w * h / 2];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x += 2)
+                    data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, data);
+            break;
+        case COL_RGB5A1:
+            data = new uint32_t[w * h / 2];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x += 2)
+                    data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, data);
+            break;
+        case COL_RGBA4:
+            data = new uint32_t[w * h / 2];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x += 2)
+                    data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, data);
+            break;
+        }
+        delete[] data;
+        readDirty &= ~BIT(0);
+    }
+
     // Resize and clear the depth/stencil buffer if dirty, restoring state after
     if (readDirty & BIT(1)) {
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, bufWidth, bufHeight);
@@ -610,51 +683,6 @@ void GpuRenderOgl::updateBuffers() {
         updateViewport();
         readDirty &= ~BIT(1);
     }
-
-    // Copy data from memory to the color buffer based on format if dirty
-    if (~readDirty & BIT(0)) return;
-    uint32_t *data = nullptr;
-    uint16_t w = bufWidth, h = bufHeight;
-    glActiveTexture(GL_TEXTURE0 + TEX_BUFFER);
-    switch (colbufFmt) {
-    case COL_RGBA8:
-        data = new uint32_t[w * h];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-                data[y * w + x] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, data);
-        break;
-    case COL_RGB8:
-        data = new uint32_t[w * h];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-                data[y * w + x] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 3 - 1) | 0xFF;
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, data);
-        break;
-    case COL_RGB565:
-        data = new uint32_t[w * h / 2];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x += 2)
-                data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, data);
-        break;
-    case COL_RGB5A1:
-        data = new uint32_t[w * h / 2];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x += 2)
-                data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, data);
-        break;
-    case COL_RGBA4:
-        data = new uint32_t[w * h / 2];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x += 2)
-                data[(y * w + x) / 2] = core.memory.read<uint32_t>(ARM11, colbufAddr + getSwizzle(x, y, w) * 2);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bufWidth, bufHeight, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, data);
-        break;
-    }
-    delete[] data;
-    readDirty &= ~BIT(0);
 }
 
 void GpuRenderOgl::updateTextures() {
@@ -905,6 +933,128 @@ void GpuRenderOgl::updateViewport() {
     glViewport(0 - viewX, y - viewY, viewWidth, viewHeight);
 }
 
+std::string GpuRenderOgl::getSrc(int i, int j) {
+    // Get the GLSL string for a combiner source
+    std::string color;
+    switch (cd.combSrcs[i][j]) {
+        case COMB_PRIM: color = "vtxColor"; break;
+        case COMB_FRAG0: useLights = true; color = "fragColors[0]"; break;
+        case COMB_FRAG1: useLights = true; color = "fragColors[1]"; break;
+        case COMB_TEX0: color = "texture(texUnits[0], vec2(vtxCoordsS[0], vtxCoordsT[0]))"; break;
+        case COMB_TEX1: color = "texture(texUnits[1], vec2(vtxCoordsS[1], vtxCoordsT[1]))"; break;
+        case COMB_TEX2: color = "texture(texUnits[2], vec2(vtxCoordsS[2], vtxCoordsT[2]))"; break;
+        case COMB_TEX3: color = "vec4(1.0)"; break; // Stub
+        case COMB_PRVBUF: color = "combBuffer"; break;
+        case COMB_CONST: color = "combColors[" + std::to_string(i / 2) + "]"; break;
+        case COMB_PREV: color = "prevColor"; break;
+        default: color = "vec4(0.0)"; break;
+    }
+
+    // Modify the source based on its operand
+    switch (cd.combOpers[i][j]) {
+        default: return color;
+        case OPER_1MSRC: return "(1.0 - " + color + ")";
+        case OPER_SRCA: return color + ".aaaa";
+        case OPER_1MSRCA: return "(1.0 - " + color + ".aaaa)";
+        case OPER_SRCR: return color + ".rrrr";
+        case OPER_1MSRCR: return "(1.0 - " + color + ".rrrr)";
+        case OPER_SRCG: return color + ".gggg";
+        case OPER_1MSRCG: return "(1.0 - " + color + ".gggg)";
+        case OPER_SRCB: return color + ".bbbb";
+        case OPER_1MSRCB: return "(1.0 - " + color + ".bbbb)";
+    }
+}
+
+void GpuRenderOgl::updateFragShader() {
+    // Use the fragment ubershader if enabled
+    fragDirty = false;
+    if (Settings::gpuFragShader == 0) {
+        if (fragShader != fragShaderUber)
+            setShader(fragShaderUber, true);
+        return;
+    }
+
+    // Use a cached fragment shader if found for the current combiner setup
+    uint32_t crc = calcCrc32((uint8_t*)&cd, sizeof(CombData));
+    for (int i = 0; i < fragCache.size(); i++) {
+        if (fragCache[i].dataCrc == crc) {
+            setShader(fragCache[i].shader, true);
+            return;
+        }
+    }
+
+    // Start building a new fragment shader
+    useLights = false;
+    std::string fragCode = "vec4 color;\n";
+
+    // Loop through each of the combiner stages
+    for (int i = 0; i < 12; i++) {
+        // Emit code for an RGB combiner
+        fragCode += "color.rgb = ";
+        switch (cd.combModes[i / 2][0]) {
+            case MODE_REPLACE: fragCode += getSrc(i, 0) + ".rgb"; break;
+            case MODE_MOD: fragCode += getSrc(i, 0) + ".rgb * " + getSrc(i, 1) + ".rgb"; break;
+            case MODE_ADD: fragCode += getSrc(i, 0) + ".rgb + " + getSrc(i, 1) + ".rgb"; break;
+            case MODE_ADDS: fragCode += getSrc(i, 0) + ".rgb + " + getSrc(i, 1) + ".rgb - 0.5"; break;
+            case MODE_INTERP: fragCode += "mix(" + getSrc(i, 1) + ".rgb, " + getSrc(i, 0) + ".rgb, " + getSrc(i, 2) + ".rgb)"; break;
+            case MODE_SUB: fragCode += getSrc(i, 0) + ".rgb - " + getSrc(i, 1) + ".rgb"; break;
+            case MODE_DOT3: fragCode += "vec3(dot3(" + getSrc(i, 0) + ".rgb, " + getSrc(i, 1) + ".rgb))"; break;
+            case MODE_DOT3A: fragCode += "vec3(dot3(" + getSrc(i, 0) + ".rgb, " + getSrc(i, 1) + ".rgb))"; break;
+            case MODE_MULADD: fragCode += "(" + getSrc(i, 0) + ".rgb * " + getSrc(i, 1) + ".rgb) + " + getSrc(i, 2) + ".rgb"; break;
+            case MODE_ADDMUL: fragCode += "(" + getSrc(i, 0) + ".rgb + " + getSrc(i, 1) + ".rgb) * " + getSrc(i, 2) + ".rgb"; break;
+            default: fragCode += "vec3(0.0)"; break;
+        }
+        fragCode += ";\n";
+
+        // Emit code for an alpha combiner
+        fragCode += "color.a = ";
+        switch (cd.combModes[i++ / 2][1]) {
+            case MODE_REPLACE: fragCode += getSrc(i, 0) + ".a"; break;
+            case MODE_MOD: fragCode += getSrc(i, 0) + ".a * " + getSrc(i, 1) + ".a"; break;
+            case MODE_ADD: fragCode += getSrc(i, 0) + ".a + " + getSrc(i, 1) + ".a"; break;
+            case MODE_ADDS: fragCode += getSrc(i, 0) + ".a + " + getSrc(i, 1) + ".a - 0.5"; break;
+            case MODE_INTERP: fragCode += "mix(" + getSrc(i, 1) + ".a, " + getSrc(i, 0) + ".a, " + getSrc(i, 2) + ".a)"; break;
+            case MODE_SUB: fragCode += getSrc(i, 0) + ".a - " + getSrc(i, 1) + ".a"; break;
+            case MODE_DOT3A: fragCode += "dot3(" + getSrc(i, 0) + ".aaa, " + getSrc(i, 1) + ".aaa)"; break;
+            case MODE_MULADD: fragCode += "(" + getSrc(i, 0) + ".a * " + getSrc(i, 1) + ".a) + " + getSrc(i, 2) + ".a"; break;
+            case MODE_ADDMUL: fragCode += "(" + getSrc(i, 0) + ".a + " + getSrc(i, 1) + ".a) * " + getSrc(i, 2) + ".a"; break;
+            default: fragCode += "1.0;\n"; break;
+        }
+        fragCode += ";\n";
+
+        // Emit code to update previous colors
+        fragCode += "prevColor = color;\n";
+        if (i >= 8) continue;
+        if (cd.combBufMask & (0x01 << (i / 2))) fragCode += "combBuffer.rgb = color.rgb;\n";
+        if (cd.combBufMask & (0x10 << (i / 2))) fragCode += "combBuffer.a = color.a;\n";
+    }
+
+    // Emit code for alpha testing
+    switch (cd.alphaFunc) {
+        case TEST_NV: fragCode += "discard;\n"; break;
+        case TEST_AL: break;
+        case TEST_EQ: fragCode += "if (color.a != " + std::to_string(cd.alphaValue) + ") discard;\n"; break;
+        case TEST_NE: fragCode += "if (color.a == " + std::to_string(cd.alphaValue) + ") discard;\n"; break;
+        case TEST_LT: fragCode += "if (color.a >= " + std::to_string(cd.alphaValue) + ") discard;\n"; break;
+        case TEST_LE: fragCode += "if (color.a > " + std::to_string(cd.alphaValue) + ") discard;\n"; break;
+        case TEST_GT: fragCode += "if (color.a <= " + std::to_string(cd.alphaValue) + ") discard;\n"; break;
+        case TEST_GE: fragCode += "if (color.a < " + std::to_string(cd.alphaValue) + ") discard;\n"; break;
+    }
+
+    // Finish the main function and prepend fragment base code
+    if (useLights) fragCode = "updateFrag();\n" + fragCode;
+    fragCode = "void main() {\n" + fragCode;
+    fragCode = fragBase + fragCode;
+    fragCode += "fragColor = color;\n";
+    fragCode += "}\n";
+
+    // Cache and use the new fragment shader
+    GLint shader = makeShader(fragCode.c_str(), true);
+    FragCache c = { shader, crc };
+    fragCache.push_back(c);
+    setShader(shader, true);
+}
+
 void GpuRenderOgl::setPrimMode(PrimMode mode) {
     // Set a new primitive mode
     flushVertices();
@@ -981,46 +1131,52 @@ void GpuRenderOgl::setCombSrcs(int i, CombSrc *srcs) {
     // Update a group of texture combiner source uniforms
     flushVertices();
     for (int j = 0; j < 6; j++)
-        combSrcs[i * 2 + (j > 2)][j % 3] = srcs[j];
-    glUniform3iv(combSrcsLoc + i * 2, 2, combSrcs[i * 2]);
+        cd.combSrcs[i * 2 + (j > 2)][j % 3] = srcs[j];
+    glUniform3iv(combSrcsLoc + i * 2, 2, cd.combSrcs[i * 2]);
+    fragDirty = true;
 }
 
 void GpuRenderOgl::setCombOpers(int i, CombOper *opers) {
     // Update a group of texture combiner operand uniforms
     flushVertices();
     for (int j = 0; j < 6; j++)
-        combOpers[i * 2 + (j > 2)][j % 3] = opers[j];
-    glUniform3iv(combOpersLoc + i * 2, 2, combOpers[i * 2]);
+        cd.combOpers[i * 2 + (j > 2)][j % 3] = opers[j];
+    glUniform3iv(combOpersLoc + i * 2, 2, cd.combOpers[i * 2]);
+    fragDirty = true;
 }
 
 void GpuRenderOgl::setCombModes(int i, CalcMode *modes) {
     // Update a group of texture combiner mode uniforms
     flushVertices();
     for (int j = 0; j < 2; j++)
-        combModes[i][j] = modes[j];
-    glUniform2iv(combModesLoc + i, 1, combModes[i]);
+        cd.combModes[i][j] = modes[j];
+    glUniform2iv(combModesLoc + i, 1, cd.combModes[i]);
+    fragDirty = true;
 }
 
 void GpuRenderOgl::setCombColor(int i, float *color) {
     // Update one of the texture combiner color uniforms
     flushVertices();
     for (int j = 0; j < 4; j++)
-        combColors[i][j] = color[j];
-    glUniform4fv(combColorsLoc + i, 1, combColors[i]);
+        cd.combColors[i][j] = color[j];
+    glUniform4fv(combColorsLoc + i, 1, cd.combColors[i]);
+    fragDirty = true;
 }
 
 void GpuRenderOgl::setCombBufColor(float *color) {
     // Update the texture combiner buffer color uniform
     flushVertices();
     for (int i = 0; i < 4; i++)
-        combBufColor[i] = color[i];
-    glUniform4fv(combBufColorLoc, 1, combBufColor);
+        cd.combBufColor[i] = color[i];
+    glUniform4fv(combBufColorLoc, 1, cd.combBufColor);
+    fragDirty = true;
 }
 
 void GpuRenderOgl::setCombBufMask(uint8_t mask) {
     // Update the texture combiner buffer mask uniform
     flushVertices();
-    glUniform1i(combBufMaskLoc, combBufMask = mask);
+    glUniform1i(combBufMaskLoc, cd.combBufMask = mask);
+    fragDirty = true;
 }
 
 void GpuRenderOgl::setBlendOpers(BlendOper *opers) {
@@ -1074,8 +1230,9 @@ void GpuRenderOgl::setBlendColor(float *color) {
 void GpuRenderOgl::setAlphaTest(TestFunc func, float value) {
     // Update the alpha test function and value uniforms
     flushVertices();
-    glUniform1i(alphaFuncLoc, alphaFunc = func);
-    glUniform1f(alphaValueLoc, alphaValue = value);
+    glUniform1i(alphaFuncLoc, cd.alphaFunc = func);
+    glUniform1f(alphaValueLoc, cd.alphaValue = value);
+    fragDirty = true;
 }
 
 void GpuRenderOgl::setStencilTest(TestFunc func, bool enable) {

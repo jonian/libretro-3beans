@@ -20,6 +20,7 @@
 #include "b3_frame.h"
 #include "b3_canvas_ogl.h"
 #include "b3_canvas_soft.h"
+#include "gpu_dialog.h"
 #include "input_dialog.h"
 #include "path_dialog.h"
 
@@ -34,11 +35,7 @@ enum FrameEvent {
     CART_AUTO_BOOT,
     DSP_INTERP,
     DSP_HLE,
-    THREADED_GPU,
-    GPU_RENDER_SOFT,
-    GPU_RENDER_OGL,
-    GPU_SHADER_INTERP,
-    GPU_SHADER_GLSL,
+    GPU_SETTINGS,
     PATH_SETTINGS,
     INPUT_BINDINGS,
     UPDATE_JOYSTICK
@@ -55,11 +52,7 @@ EVT_MENU(FPS_LIMITER, b3Frame::fpsLimiter)
 EVT_MENU(CART_AUTO_BOOT, b3Frame::cartAutoBoot)
 EVT_MENU(DSP_INTERP, b3Frame::dspBackend<0>)
 EVT_MENU(DSP_HLE, b3Frame::dspBackend<1>)
-EVT_MENU(THREADED_GPU, b3Frame::threadedGpu)
-EVT_MENU(GPU_RENDER_SOFT, b3Frame::gpuRenderer<0>)
-EVT_MENU(GPU_RENDER_OGL, b3Frame::gpuRenderer<1>)
-EVT_MENU(GPU_SHADER_INTERP, b3Frame::gpuShader<0>)
-EVT_MENU(GPU_SHADER_GLSL, b3Frame::gpuShader<1>)
+EVT_MENU(GPU_SETTINGS, b3Frame::gpuSettings)
 EVT_MENU(PATH_SETTINGS, b3Frame::pathSettings)
 EVT_MENU(INPUT_BINDINGS, b3Frame::inputBindings)
 EVT_TIMER(UPDATE_JOYSTICK, b3Frame::updateJoystick)
@@ -86,26 +79,13 @@ b3Frame::b3Frame(): wxFrame(nullptr, wxID_ANY, "3Beans") {
     dspMenu->AppendRadioItem(DSP_INTERP, "&Interpreter");
     dspMenu->AppendRadioItem(DSP_HLE, "&HLE");
 
-    // Set up the GPU renderer submenu
-    wxMenu *renderMenu = new wxMenu();
-    renderMenu->AppendRadioItem(GPU_RENDER_SOFT, "&Software");
-    renderMenu->AppendRadioItem(GPU_RENDER_OGL, "&OpenGL");
-
-    // Set up the GPU shader submenu
-    shaderMenu = new wxMenu();
-    shaderMenu->AppendRadioItem(GPU_SHADER_INTERP, "&Interpreter");
-    shaderMenu->AppendRadioItem(GPU_SHADER_GLSL, "&GLSL JIT");
-
     // Set up the settings menu
     wxMenu *settingsMenu = new wxMenu();
     settingsMenu->AppendCheckItem(FPS_LIMITER, "&FPS Limiter");
     settingsMenu->AppendCheckItem(CART_AUTO_BOOT, "&Cart Auto-Boot");
     settingsMenu->AppendSubMenu(dspMenu, "&DSP Backend");
     settingsMenu->AppendSeparator();
-    settingsMenu->AppendCheckItem(THREADED_GPU, "&Threaded GPU");
-    settingsMenu->AppendSubMenu(renderMenu, "&GPU Renderer");
-    settingsMenu->AppendSubMenu(shaderMenu, "&GPU Shader");
-    settingsMenu->AppendSeparator();
+    settingsMenu->Append(GPU_SETTINGS, "&GPU Settings");
     settingsMenu->Append(PATH_SETTINGS, "&Path Settings");
     settingsMenu->Append(INPUT_BINDINGS, "&Input Bindings");
 
@@ -129,11 +109,9 @@ b3Frame::b3Frame(): wxFrame(nullptr, wxID_ANY, "3Beans") {
         canvas = new b3CanvasOgl(this);
     }
     catch (CanvasError e) {
-        // Fall back to software and disable OpenGL settings
+        // Fall back to software and disable OpenGL
         canvas = new b3CanvasSoft(this);
-        renderMenu->Enable(GPU_RENDER_OGL, false);
-        shaderMenu->Enable(GPU_SHADER_GLSL, false);
-        Settings::gpuRenderer = Settings::gpuShader = 0;
+        Settings::gpuRenderer = 0;
         glSupport = false;
         Settings::save();
     }
@@ -143,20 +121,10 @@ b3Frame::b3Frame(): wxFrame(nullptr, wxID_ANY, "3Beans") {
     sizer->Add(canvas, 1, wxEXPAND);
     SetSizer(sizer);
 
-    // Disable GLSL JIT if the OpenGL renderer isn't set
-    if (Settings::gpuRenderer != 1) {
-        shaderMenu->Enable(GPU_SHADER_GLSL, false);
-        Settings::gpuShader = 0;
-        Settings::save();
-    }
-
     // Set the initial setting states
     settingsMenu->Check(FPS_LIMITER, Settings::fpsLimiter);
     settingsMenu->Check(CART_AUTO_BOOT, Settings::cartAutoBoot);
     dspMenu->Check(DSP_INTERP + std::min(Settings::dspBackend, 1), true);
-    settingsMenu->Check(THREADED_GPU, Settings::threadedGpu);
-    renderMenu->Check(GPU_RENDER_SOFT + std::min(Settings::gpuRenderer, 1), true);
-    shaderMenu->Check(GPU_SHADER_INTERP + std::min(Settings::gpuShader, 1), true);
 
     // Prepare a joystick if one is connected
     joystick = new wxJoystick();
@@ -407,29 +375,10 @@ template <int i> void b3Frame::dspBackend(wxCommandEvent &event) {
     Settings::save();
 }
 
-void b3Frame::threadedGpu(wxCommandEvent &event) {
-    // Toggle the threaded GPU setting
-    Settings::threadedGpu = !Settings::threadedGpu;
-    Settings::save();
-}
-
-template <int i> void b3Frame::gpuRenderer(wxCommandEvent &event) {
-    // Disable GLSL JIT if the OpenGL renderer isn't set
-    shaderMenu->Enable(GPU_SHADER_GLSL, i == 1);
-    if (i != 1) {
-        shaderMenu->Check(GPU_SHADER_INTERP, true);
-        Settings::gpuShader = 0;
-    }
-
-    // Set the GPU renderer to a specific value
-    Settings::gpuRenderer = i;
-    Settings::save();
-}
-
-template <int i> void b3Frame::gpuShader(wxCommandEvent &event) {
-    // Set the GPU shader to a specific value
-    Settings::gpuShader = i;
-    Settings::save();
+void b3Frame::gpuSettings(wxCommandEvent &event) {
+    // Show the GPU settings dialog
+    GpuDialog gpuDialog(glSupport);
+    gpuDialog.ShowModal();
 }
 
 void b3Frame::pathSettings(wxCommandEvent &event) {

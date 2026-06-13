@@ -97,6 +97,7 @@ Cartridge::Cartridge(Core &core, std::string &cartPath): core(core) {
 
 Cartridge::~Cartridge() {
     // Clean up the cartridge file and save data
+    updateSave();
     if (cartFile) fclose(cartFile);
     if (saveData) delete[] saveData;
 }

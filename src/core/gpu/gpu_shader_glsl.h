@@ -28,8 +28,7 @@
 class GpuRenderOgl;
 
 struct ShaderCache {
-    GLuint program;
-    GLint floatsLoc, intsLoc, boolsLoc;
+    GLint shader;
     uint32_t codeCrc, descCrc, mapCrc;
     uint32_t entryEnd;
 };
@@ -65,6 +64,8 @@ public:
     void setGshInts(int i, uint8_t int0, uint8_t int1, uint8_t int2) {}
     void setGshFloats(int i, float *floats) {}
 
+    void updateUniforms(GLuint program);
+
 private:
     GpuRenderOgl &gpuRender;
     float (*input)[4];
@@ -77,7 +78,7 @@ private:
     std::vector<ShaderFunc> shaderFuncs;
     std::vector<uint32_t> ifStack, loopStack, jmpStack;
 
-    ShaderCache *current = nullptr;
+    GLint floatsLoc, intsLoc, boolsLoc;
     uint32_t *shdDesc = vshDesc;
     uint16_t shdPc, shdStop;
     bool shaderDirty = false;
@@ -91,11 +92,8 @@ private:
     GLint vshInts[4][3] = {};
     float vshFloats[96][4] = {};
 
-    static uint32_t calcCrc32(uint8_t *data, uint32_t size);
     static std::string getSrc(uint8_t src, uint32_t desc, uint8_t idx = 0);
     static std::string setDst(uint8_t dst, uint32_t desc, std::string value, bool single = false);
-
-    void updateUniforms();
     void emitFuncBody(std::string &code, uint16_t entry, uint16_t end, bool full = true);
 
     void shdAdd(std::string &code, uint32_t opcode);

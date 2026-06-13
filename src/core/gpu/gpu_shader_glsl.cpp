@@ -86,27 +86,19 @@ GpuShaderGlsl::GpuShaderGlsl(GpuRenderOgl &gpuRender, float (*input)[4]): gpuRen
 GpuShaderGlsl::~GpuShaderGlsl() {
     // Clean up resources that were generated
     for (int i = 0; i < shaderCache.size(); i++)
-        glDeleteProgram(shaderCache[i].program);
+        glDeleteShader(shaderCache[i].shader);
     glDeleteBuffers(1, &vbo);
     glDeleteVertexArrays(1, &vao);
 }
 
-uint32_t GpuShaderGlsl::calcCrc32(uint8_t *data, uint32_t size) {
-    // Calculate a CRC32 for the given data
-    uint32_t crc = 0xFFFFFFFF;
-    for (int i = 0; i < size; i++) {
-        crc ^= data[i];
-        for (int j = 0; j < 8; j++)
-            crc = (crc & 0x1) ? ((crc >> 1) ^ 0xEDB88320) : (crc >> 1);
-    }
-    return crc;
-}
-
-void GpuShaderGlsl::updateUniforms() {
+void GpuShaderGlsl::updateUniforms(GLuint program) {
     // Update all uniforms when the shader changes
-    glUniform4fv(current->floatsLoc, 96, vshFloats[0]);
-    glUniform3iv(current->intsLoc, 4, vshInts[0]);
-    glUniform1iv(current->boolsLoc, 16, vshBools);
+    floatsLoc = glGetUniformLocation(program, "floats");
+    intsLoc = glGetUniformLocation(program, "ints");
+    boolsLoc = glGetUniformLocation(program, "bools");
+    glUniform4fv(floatsLoc, 96, vshFloats[0]);
+    glUniform3iv(intsLoc, 4, vshInts[0]);
+    glUniform1iv(boolsLoc, 16, vshBools);
 }
 
 void GpuShaderGlsl::processVtx(uint32_t idx) {
@@ -118,18 +110,16 @@ void GpuShaderGlsl::processVtx(uint32_t idx) {
 
     // Calculate comparison values for the current shader
     ShaderCache s;
-    s.codeCrc = calcCrc32((uint8_t*)vshCode, sizeof(vshCode));
-    s.descCrc = calcCrc32((uint8_t*)vshDesc, sizeof(vshDesc));
-    s.mapCrc = calcCrc32((uint8_t*)outMap, sizeof(outMap));
+    s.codeCrc = gpuRender.calcCrc32((uint8_t*)vshCode, sizeof(vshCode));
+    s.descCrc = gpuRender.calcCrc32((uint8_t*)vshDesc, sizeof(vshDesc));
+    s.mapCrc = gpuRender.calcCrc32((uint8_t*)outMap, sizeof(outMap));
     s.entryEnd = (vshEntry << 16) | vshEnd;
 
-    // Use a cached shader program if one is found
+    // Use a cached vertex shader if one is found
     for (int i = 0; i < shaderCache.size(); i++) {
         ShaderCache &c = shaderCache[i];
-        if (c.codeCrc != s.codeCrc || c.descCrc != s.descCrc || c.mapCrc != s.mapCrc || c.entryEnd != s.entryEnd)
-            continue;
-        gpuRender.setProgram((current = &c)->program);
-        return updateUniforms();
+        if (c.codeCrc == s.codeCrc && c.descCrc == s.descCrc && c.mapCrc == s.mapCrc && c.entryEnd == s.entryEnd)
+            return gpuRender.setShader(c.shader, false);
     }
 
     // Emit the vertex shader main function
@@ -179,14 +169,9 @@ void GpuShaderGlsl::processVtx(uint32_t idx) {
 
     // Compile and cache a program from the finished vertex code
     LOG_INFO("Caching GLSL shader with CRCs 0x%X, 0x%X, and 0x%X\n", s.codeCrc, s.descCrc, s.mapCrc);
-    s.program = gpuRender.makeProgram(vtxCode.c_str());
-    gpuRender.setProgram(s.program);
-    s.floatsLoc = glGetUniformLocation(s.program, "floats");
-    s.intsLoc = glGetUniformLocation(s.program, "ints");
-    s.boolsLoc = glGetUniformLocation(s.program, "bools");
+    s.shader = gpuRender.makeShader(vtxCode.c_str(), false);
+    gpuRender.setShader(s.shader, false);
     shaderCache.push_back(s);
-    current = &shaderCache[shaderCache.size() - 1];
-    updateUniforms();
 }
 
 void GpuShaderGlsl::emitFuncBody(std::string &code, uint16_t entry, uint16_t end, bool full) {
@@ -601,19 +586,19 @@ void GpuShaderGlsl::setVshBool(int i, bool value) {
     // Update one of the vertex shader boolean uniforms
     gpuRender.flushVertices();
     vshBools[i] = value;
-    if (current) glUniform1i(current->boolsLoc + i, value);
+    glUniform1i(boolsLoc + i, value);
 }
 
 void GpuShaderGlsl::setVshInts(int i, uint8_t int0, uint8_t int1, uint8_t int2) {
     // Update one of the vertex shader integer uniforms
     gpuRender.flushVertices();
     vshInts[i][0] = int0, vshInts[i][1] = int0, vshInts[i][2] = int2;
-    if (current) glUniform3i(current->intsLoc + i, int0, int1, int2);
+    glUniform3i(intsLoc + i, int0, int1, int2);
 }
 
 void GpuShaderGlsl::setVshFloats(int i, float *floats) {
     // Update one of the vertex shader float uniforms
     gpuRender.flushVertices();
     memcpy(vshFloats[i], floats, sizeof(float) * 4);
-    if (current) glUniform4fv(current->floatsLoc + i, 1, floats);
+    glUniform4fv(floatsLoc + i, 1, floats);
 }

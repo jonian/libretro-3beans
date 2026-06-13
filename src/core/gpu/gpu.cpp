@@ -53,7 +53,7 @@ void Gpu::createRender() {
     }
 
     // Initialize a new shader of the current type
-    switch (shaderType = Settings::gpuShader) {
+    switch (shaderType = (renderType == 1) ? Settings::gpuVtxShader : 0) {
         default: gpuShader = new GpuShaderInterp(*gpuRender, shdInput); break;
         case 1: gpuShader = new GpuShaderGlsl(*(GpuRenderOgl*)gpuRender, shdInput); break;
     }
@@ -81,7 +81,7 @@ void Gpu::syncRender() {
     }
 
     // Reset the renderer if it was changed
-    if (renderType == Settings::gpuRenderer && shaderType == Settings::gpuShader) return;
+    if (renderType == Settings::gpuRenderer && shaderType == Settings::gpuVtxShader) return;
     destroyRender();
     createRender();
 
