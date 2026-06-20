@@ -212,7 +212,7 @@ static void initConfig()
 
 static void updateConfig()
 {
-  Settings::basePath = normalizePath(savesPath, false);
+  Settings::basePath = savesPath + "3beans";
   Settings::boot11Path = systemPath + "boot11.bin";
   Settings::boot9Path = systemPath + "boot9.bin";
   Settings::nandPath = systemPath + "nand.bin";
@@ -617,18 +617,22 @@ unsigned retro_api_version()
 size_t retro_get_memory_size(unsigned id)
 {
   if (id == RETRO_MEMORY_SYSTEM_RAM)
-  {
     return 0x600000;
-  }
+
+  if (id == RETRO_MEMORY_SAVE_RAM)
+    return core->cartridge.getSaveSize();
+
   return 0;
 }
 
 void* retro_get_memory_data(unsigned id)
 {
   if (id == RETRO_MEMORY_SYSTEM_RAM)
-  {
     return core->memory.getRam();
-  }
+
+  if (id == RETRO_MEMORY_SAVE_RAM)
+    return (void*)core->cartridge.getSave();
+
   return NULL;
 }
 

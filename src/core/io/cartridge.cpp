@@ -46,11 +46,11 @@ Cartridge::Cartridge(Core &core, std::string &cartPath): core(core) {
     LOG_INFO("Cartridge is type %d, and its IDs are 0x%X and 0x%X\n", type, cartId1, cartId2);
     savePath = cartPath.substr(0, cartPath.rfind('.')) + ".sav";
 
-#ifdef __LIBRETRO__
-    savePath = Settings::basePath + savePath.substr(savePath.find_last_of("/\\"));
-#endif
     // Open a CARD1 save file if it exists
     if (type == 1) {
+#ifdef __LIBRETRO__
+        {
+#else
         if (FILE *saveFile = fopen(savePath.c_str(), "rb")) {
             // Determine a CARD1 save ID based on size, up to 8MB
             fseek(saveFile, 0, SEEK_END);
@@ -68,6 +68,7 @@ Cartridge::Cartridge(Core &core, std::string &cartPath): core(core) {
             fclose(saveFile);
         }
         else {
+#endif
             // Create a new CARD1 save and assume 512KB size
             saveId = 0x1322C2;
             saveData = new uint8_t[saveSize1 = 0x80000];
@@ -79,6 +80,9 @@ Cartridge::Cartridge(Core &core, std::string &cartPath): core(core) {
     // Open a CARD2 save file if it exists and set the writable address
     if (type != 2) return;
     saveBase = readCart(0x200) << 9;
+#ifdef __LIBRETRO__
+      {
+#else
     if (FILE *saveFile = fopen(savePath.c_str(), "rb")) {
         // Get the file size and allocate CARD2 save data based on that
         fseek(saveFile, 0, SEEK_END);
@@ -89,6 +93,7 @@ Cartridge::Cartridge(Core &core, std::string &cartPath): core(core) {
         fclose(saveFile);
     }
     else {
+#endif
         // Create a new CARD2 save and assume 1MB size
         saveData = new uint8_t[saveSize2 = 0x100000];
         memset(saveData, 0xFF, saveSize2);
@@ -118,6 +123,7 @@ uint32_t Cartridge::readCart(uint32_t address) {
 }
 
 void Cartridge::updateSave() {
+#ifndef __LIBRETRO__
     // Update the save file if its data changed
     if (!saveDirty) return;
     if (FILE *saveFile = fopen(savePath.c_str(), "wb")) {
@@ -126,6 +132,7 @@ void Cartridge::updateSave() {
         fclose(saveFile);
         saveDirty = false;
     }
+#endif
 }
 
 void Cartridge::ntrWordReady() {

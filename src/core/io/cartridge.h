@@ -75,6 +75,11 @@ public:
     void writeSpiFifoIntMask(uint32_t mask, uint32_t value);
     void writeSpiFifoIntStat(uint32_t mask, uint32_t value);
 
+#ifdef __LIBRETRO__
+    uint32_t getSaveSize() { return std::max(saveSize1, saveSize2); }
+    uint8_t *getSave() { return saveData; }
+#endif
+
 private:
     Core &core;
     static const uint16_t ctrClocks[8];
