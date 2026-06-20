@@ -26,34 +26,35 @@ inline std::string normalizePath(std::string path, bool addSlash = false)
   return newPath;
 }
 
-inline uint32_t convertColor(uint32_t color)
-{
-  return 0xFF000000 |
-    ((color & 0x0000FF) << 16) |
-    ((color & 0x00FF00)) |
-    ((color & 0xFF0000) >> 16);
-}
-
-inline void copyScreen(uint32_t *src, uint32_t *dst, int sw, int sh, int dx, int dy, int dw, int dh, int stride)
+inline void copyScreen(uint32_t *src, uint32_t *dst, int sw, int sh, int ss, int dx, int dy, int dw, int dh, int ds)
 {
   int scaleX = dw / sw;
   int scaleY = dh / sh;
 
   if ((scaleX >= 1 && scaleY >= 1) && (scaleX > 1 || scaleY > 1))
   {
-    for (int y = 0; y < dh; ++y)
-    {
-      int srcY = (y / scaleY) * sw;
-      int dstY = (dy + y) * stride + dx;
+    int rowBytes = dw * sizeof(uint32_t);
 
-      for (int x = 0; x < dw; ++x)
-        dst[dstY + x] = src[srcY + (x / scaleX)];
+    for (int y = 0; y < sh; ++y)
+    {
+      uint32_t *srcRow = src + y * ss;
+      uint32_t *dstRow = dst + (dy + y * scaleY) * ds + dx;
+      uint32_t *newRow = dstRow;
+
+      for (int x = 0; x < sw; ++x)
+      {
+        for (int cx = 0; cx < scaleX; ++cx)
+          *newRow++ = srcRow[x];
+      }
+
+      for (int cy = 1; cy < scaleY; ++cy)
+        memcpy(dstRow + cy * ds, dstRow, rowBytes);
     }
   }
-  else if (dx == 0 && dw == stride)
+  else if (dx == 0 && dw == ds && sw == ss)
   {
     int pixels = dw * dh * sizeof(uint32_t);
-    int offset = dy * stride + dx;
+    int offset = dy * ds + dx;
 
     memcpy(dst + offset, src, pixels);
   }
@@ -63,8 +64,8 @@ inline void copyScreen(uint32_t *src, uint32_t *dst, int sw, int sh, int dx, int
 
     for (int y = 0; y < dh; ++y)
     {
-      int srcY = y * sw;
-      int dstY = (dy + y) * stride + dx;
+      int srcY = y * ss;
+      int dstY = (dy + y) * ds + dx;
 
       memcpy(dst + dstY, src + srcY, rowSize);
     }

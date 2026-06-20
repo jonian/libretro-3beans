@@ -24,14 +24,9 @@ void RendererSoft::update(ScreenLayout &layout)
 
 void RendererSoft::drawTopScreen(uint32_t *frame, ScreenLayout &layout)
 {
-  static uint32_t buffer[400 * 240];
-
-  for (int i = 0; i < 400 * 240; i++)
-    buffer[i] = convertColor(frame[i]);
-
   copyScreen(
-    buffer, videoBuffer.data(),
-    400, 240,
+    frame, videoBuffer.data(),
+    400, 240, 400,
     layout.topX, layout.topY,
     layout.topWidth, layout.topHeight,
     layout.minWidth
@@ -40,15 +35,9 @@ void RendererSoft::drawTopScreen(uint32_t *frame, ScreenLayout &layout)
 
 void RendererSoft::drawBotScreen(uint32_t *frame, ScreenLayout &layout)
 {
-  static uint32_t buffer[320 * 240];
-
-  for (int y = 0; y < 240; y++)
-    for (int x = 0; x < 320; x++)
-      buffer[y * 320 + x] = convertColor(frame[(y + 240) * 400 + (x + 40)]);
-
   copyScreen(
-    buffer, videoBuffer.data(),
-    320, 240,
+    frame + 400 * 240 + 40, videoBuffer.data(),
+    320, 240, 400,
     layout.botX, layout.botY,
     layout.botWidth, layout.botHeight,
     layout.minWidth

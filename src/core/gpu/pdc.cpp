@@ -44,7 +44,11 @@ void Pdc::drawScreen(int i, uint32_t *buffer) {
                 uint8_t r = (color >> 24) & 0xFF;
                 uint8_t g = (color >> 16) & 0xFF;
                 uint8_t b = (color >> 8) & 0xFF;
+#ifdef __LIBRETRO__
+                buffer[y * 400 + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+#else
                 buffer[y * 400 + x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
+#endif
             }
         }
         return;
@@ -56,7 +60,11 @@ void Pdc::drawScreen(int i, uint32_t *buffer) {
                 uint8_t r = core.memory.read<uint8_t>(ARM11, address + 2);
                 uint8_t g = core.memory.read<uint8_t>(ARM11, address + 1);
                 uint8_t b = core.memory.read<uint8_t>(ARM11, address + 0);
+#ifdef __LIBRETRO__
+                buffer[y * 400 + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+#else
                 buffer[y * 400 + x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
+#endif
             }
         }
         return;
@@ -69,7 +77,11 @@ void Pdc::drawScreen(int i, uint32_t *buffer) {
                 uint8_t r = ((color >> 11) & 0x1F) * 255 / 31;
                 uint8_t g = ((color >> 5) & 0x3F) * 255 / 63;
                 uint8_t b = ((color >> 0) & 0x1F) * 255 / 31;
+#ifdef __LIBRETRO__
+                buffer[y * 400 + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+#else
                 buffer[y * 400 + x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
+#endif
             }
         }
         return;
@@ -82,7 +94,11 @@ void Pdc::drawScreen(int i, uint32_t *buffer) {
                 uint8_t r = ((color >> 11) & 0x1F) * 255 / 31;
                 uint8_t g = ((color >> 6) & 0x1F) * 255 / 31;
                 uint8_t b = ((color >> 1) & 0x1F) * 255 / 31;
+#ifdef __LIBRETRO__
+                buffer[y * 400 + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+#else
                 buffer[y * 400 + x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
+#endif
             }
         }
         return;
@@ -95,7 +111,11 @@ void Pdc::drawScreen(int i, uint32_t *buffer) {
                 uint8_t r = ((color >> 12) & 0xF) * 255 / 15;
                 uint8_t g = ((color >> 8) & 0xF) * 255 / 15;
                 uint8_t b = ((color >> 4) & 0xF) * 255 / 15;
+#ifdef __LIBRETRO__
+                buffer[y * 400 + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+#else
                 buffer[y * 400 + x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
+#endif
             }
         }
         return;
