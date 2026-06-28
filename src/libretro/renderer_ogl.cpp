@@ -1,7 +1,4 @@
-#include <cstring>
-
 #include "renderer_ogl.h"
-#include "utils.h"
 
 struct CanvasVtx {
   float x, y;
@@ -115,49 +112,4 @@ void RendererOgl::render(retro_video_refresh_t videoCallback, ScreenLayout &layo
   glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
   videoCallback(RETRO_HW_FRAME_BUFFER_VALID, layout.minWidth, layout.minHeight, 0);
-}
-
-void RendererOgl::update(ScreenLayout &layout)
-{
-  auto bsize = layout.minWidth * layout.minHeight;
-
-  if (videoBufferSize != bsize)
-  {
-    videoBuffer.resize(bsize);
-    videoBufferSize = bsize;
-  }
-
-  memset(videoBuffer.data(), 0, videoBuffer.size() * sizeof(videoBuffer[0]));
-}
-
-void RendererOgl::drawTopScreen(uint32_t *frame, ScreenLayout &layout)
-{
-  copyScreen(
-    frame, videoBuffer.data(),
-    400, 240, 400,
-    layout.topX, layout.topY,
-    layout.topWidth, layout.topHeight,
-    layout.minWidth
-  );
-}
-
-void RendererOgl::drawBotScreen(uint32_t *frame, ScreenLayout &layout)
-{
-  copyScreen(
-    frame + 400 * 240 + 40, videoBuffer.data(),
-    320, 240, 400,
-    layout.botX, layout.botY,
-    layout.botWidth, layout.botHeight,
-    layout.minWidth
-  );
-}
-
-void RendererOgl::drawCursor(int32_t pointX, int32_t pointY, ScreenLayout &layout)
-{
-  drawPointer(
-    videoBuffer.data(), pointX, pointY,
-    layout.botX, layout.botY,
-    layout.botWidth, layout.botHeight,
-    layout.minWidth, layout.botWidth / 320
-  );
 }
