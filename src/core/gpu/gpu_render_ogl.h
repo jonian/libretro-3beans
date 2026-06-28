@@ -124,6 +124,12 @@ public:
     void setDepbufMask(uint8_t mask);
     void setDepthFunc(TestFunc func);
 
+#ifdef __LIBRETRO__
+    GLuint currentProgram;
+    GLuint currentVao;
+    GLuint currentVbo;
+#endif
+
 private:
     Core &core;
     GLuint vao, vbo;

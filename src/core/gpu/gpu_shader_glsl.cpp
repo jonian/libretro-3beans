@@ -99,6 +99,11 @@ void GpuShaderGlsl::updateUniforms(GLuint program) {
     glUniform4fv(floatsLoc, 96, vshFloats[0]);
     glUniform3iv(intsLoc, 4, vshInts[0]);
     glUniform1iv(boolsLoc, 16, vshBools);
+#ifdef __LIBRETRO__
+    gpuRender.currentProgram = program;
+    gpuRender.currentVao = vao;
+    gpuRender.currentVbo = vbo;
+#endif
 }
 
 void GpuShaderGlsl::processVtx(uint32_t idx) {

@@ -16,4 +16,7 @@ public:
   virtual void drawCursor(int x, int y, ScreenLayout &layout) = 0;
   virtual void update(ScreenLayout &layout) = 0;
   virtual void render(retro_video_refresh_t videoCallback, ScreenLayout &layout) = 0;
+  virtual void switchContext() = 0;
+  virtual void resetContext() = 0;
+  virtual void destroyContext() = 0;
 };

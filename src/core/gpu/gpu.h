@@ -472,6 +472,11 @@ public:
     void writeVshDescData(uint32_t mask, uint32_t value);
     void writeUnkCmd(uint32_t mask, uint32_t value);
 
+#ifdef __LIBRETRO__
+    void createRenderer();
+    void destroyRenderer();
+#endif
+
 private:
     Core &core;
     std::function<void()> *contextFunc;

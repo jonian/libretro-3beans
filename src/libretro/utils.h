@@ -71,3 +71,27 @@ inline void copyScreen(uint32_t *src, uint32_t *dst, int sw, int sh, int ss, int
     }
   }
 }
+
+inline void drawPointer(uint32_t *dst, int x, int y, int dx, int dy, int dw, int dh, int ds, int scale = 1, int size = 3)
+{
+  uint32_t posX = clampValue(x, size, (dw / scale) - size);
+  uint32_t posY = clampValue(y, size, (dh / scale) - size);
+
+  uint32_t curX = dx + (posX * scale);
+  uint32_t curY = dy + (posY * scale);
+
+  uint32_t startY = curY - (size * scale);
+  uint32_t endY = curY + (size * scale);
+
+  uint32_t startX = curX - (size * scale);
+  uint32_t endX = curX + (size * scale);
+
+  for (uint32_t py = startY; py < endY; py++)
+  {
+    for (uint32_t px = startX; px < endX; px++)
+    {
+      uint32_t& pixel = dst[(py * ds) + px];
+      pixel = (0xFFFFFF - pixel) | 0xFF000000;
+    }
+  }
+}

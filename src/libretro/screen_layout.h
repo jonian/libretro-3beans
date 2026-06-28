@@ -9,6 +9,9 @@ public:
   static bool renderTopScreen;
   static bool renderBotScreen;
 
+  const int maxWidth = (400 * 2) + 320;
+  const int maxHeight = 240 * 3;
+
   int minWidth = 0, minHeight = 0;
   int topX = 0, botX = 0;
   int topY = 0, botY = 0;

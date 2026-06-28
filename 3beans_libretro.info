@@ -20,7 +20,7 @@ core_options = "true"
 savestate = "false"
 needs_fullpath = "true"
 disk_control = "false"
-hw_render = "false"
+hw_render = "true"
 is_experimental = "true"
 
 # Firmware / BIOS

@@ -34,11 +34,19 @@ const int16_t GpuRender::etc1Tables[][4] {
 };
 
 Gpu::Gpu(Core &core, std::function<void()> *contextFunc): core(core), contextFunc(contextFunc) {
+#ifdef __LIBRETRO__
+    if (Settings::gpuRenderer == 0) createRenderer();
+} void Gpu::createRenderer() {
+#endif
     // Initialize the renderer
     createRender();
 }
 
 Gpu::~Gpu() {
+#ifdef __LIBRETRO__
+    if (Settings::gpuRenderer == 0) destroyRenderer();
+} void Gpu::destroyRenderer() {
+#endif
     // Finish and clean up
     syncRender();
     destroyRender();

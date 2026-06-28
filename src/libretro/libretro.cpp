@@ -8,10 +8,12 @@
 #include <fstream>
 #include <sstream>
 
+#include "glad/glad.h"
 #include "libretro.h"
 #include "screen_layout.h"
 #include "renderer.h"
 #include "renderer_soft.h"
+#include "renderer_ogl.h"
 #include "utils.h"
 
 #include "../core/settings.h"
@@ -28,6 +30,7 @@ static retro_audio_sample_batch_t audioBatchCallback;
 static retro_input_poll_t inputPollCallback;
 static retro_input_state_t inputStateCallback;
 
+static struct retro_hw_render_callback hwRender;
 static struct retro_log_callback logging;
 static retro_log_printf_t logCallback;
 
@@ -38,6 +41,8 @@ static std::string romPath;
 static Core *core;
 static ScreenLayout layout;
 static VideoRenderer *videoRenderer;
+
+static std::function<void()> contextFunc;
 
 static std::string touchMode;
 static std::string screenSwapMode;
@@ -79,6 +84,69 @@ static void logFallback(enum retro_log_level level, const char *fmt, ...)
   va_start(va, fmt);
   vfprintf(stderr, fmt, va);
   va_end(va);
+}
+
+static void* getProcAddress(const char* name)
+{
+  return (void*)hwRender.get_proc_address(name);
+}
+
+static void hwRenderReset()
+{
+  if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(getProcAddress)))
+  {
+    logCallback(RETRO_LOG_ERROR, "OpenGL init failed");
+  }
+
+  if (videoRenderer)
+  {
+    videoRenderer->resetContext();
+    core->gpu.createRenderer();
+  }
+}
+
+static void hwRenderDestroy()
+{
+  if (videoRenderer)
+  {
+    videoRenderer->destroyContext();
+    core->gpu.destroyRenderer();
+  }
+}
+
+static bool setHWRender(enum retro_hw_context_type type)
+{
+  hwRender.context_type = type;
+  hwRender.context_reset = hwRenderReset;
+  hwRender.context_destroy = hwRenderDestroy;
+  hwRender.bottom_left_origin = true;
+
+  if (type == RETRO_HW_CONTEXT_OPENGL_CORE)
+  {
+    hwRender.version_major = 3;
+    hwRender.version_minor = 3;
+
+    if (envCallback(RETRO_ENVIRONMENT_SET_HW_RENDER, &hwRender))
+      return true;
+  }
+
+  return false;
+}
+
+static void initVideo()
+{
+  if (Settings::gpuRenderer == 0) return;
+
+  enum retro_hw_context_type preferred = RETRO_HW_CONTEXT_NONE;
+  envCallback(RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER, &preferred);
+
+  if (preferred && setHWRender(preferred)) return;
+  if (setHWRender(RETRO_HW_CONTEXT_OPENGL_CORE)) return;
+  if (setHWRender(RETRO_HW_CONTEXT_OPENGL)) return;
+  if (setHWRender(RETRO_HW_CONTEXT_OPENGLES3)) return;
+
+  hwRender.context_type = RETRO_HW_CONTEXT_NONE;
+  Settings::gpuRenderer = 0;
 }
 
 static std::string fetchVariable(std::string key, std::string def)
@@ -197,6 +265,9 @@ static void initConfig()
     { "3beans_fpsLimiter", "FPS Limiter; enabled|disabled" },
     { "3beans_threadedGpu", "Threaded GPU; disabled|enabled" },
     { "3beans_dspBackend", "DSP Backend; Interpreter|HLE" },
+    { "3beans_gpuRenderer", "GPU Renderer; Software|OpenGL" },
+    { "3beans_gpuVtxShader", "GPU Vertex Shader; Interpreter|GLSL JIT" },
+    { "3beans_gpuFragShader", "GPU Fragment Shader; Ubershader|GLSL JIT" },
     { "3beans_screenArrangement", "Screen Arrangement; Vertical|Horizontal|Single Screen" },
     { "3beans_screenSizing", "Screen Sizing; Default|Enlarge Top|Enlarge Bottom" },
     { "3beans_screenPosition", "Screen Position; Center|Start|End" },
@@ -231,6 +302,13 @@ static void updateConfig()
   touchMode = fetchVariable("3beans_touchMode", "Touch");
   showTouchCursor = fetchVariableBool("3beans_touchCursor", true);
   cursorTimeout = fetchVariableInt("3beans_cursorTimeout", 3);
+
+  if (!videoRenderer)
+  {
+    Settings::gpuRenderer = fetchVariableEnum("3beans_gpuRenderer", {"Software", "OpenGL"});
+    Settings::gpuVtxShader = fetchVariableEnum("3beans_gpuVtxShader", {"Interpreter", "GLSL JIT"});
+    Settings::gpuFragShader = fetchVariableEnum("3beans_gpuFragShader", {"Ubershader", "GLSL JIT"});
+  }
 }
 
 static void updateScreen()
@@ -319,7 +397,17 @@ static bool createRenderer()
   {
     if (videoRenderer) delete videoRenderer;
 
-    videoRenderer = new RendererSoft();
+    if (Settings::gpuRenderer == 1)
+    {
+      videoRenderer = new RendererOgl();
+      contextFunc = std::bind(&VideoRenderer::switchContext, videoRenderer);
+    }
+    else
+    {
+      videoRenderer = new RendererSoft();
+      contextFunc = nullptr;
+    }
+
     return true;
   }
   catch (CoreError e)
@@ -327,6 +415,8 @@ static bool createRenderer()
     logCallback(RETRO_LOG_INFO, "Error initializing video renderer");
 
     videoRenderer = nullptr;
+    contextFunc = nullptr;
+
     return false;
   }
 }
@@ -337,7 +427,7 @@ static bool createCore(std::string cartPath = "")
   {
     if (core) delete core;
 
-    core = new Core(cartPath, nullptr);
+    core = new Core(cartPath, &contextFunc);
     return true;
   }
   catch (CoreError e)
@@ -363,8 +453,8 @@ void retro_get_system_av_info(retro_system_av_info* info)
   info->geometry.base_width = layout.minWidth;
   info->geometry.base_height = layout.minHeight;
 
-  info->geometry.max_width = info->geometry.base_width;
-  info->geometry.max_height = info->geometry.base_height;
+  info->geometry.max_width = layout.maxWidth;
+  info->geometry.max_height = layout.maxHeight;
   info->geometry.aspect_ratio = (float)layout.minWidth / (float)layout.minHeight;
 
   info->timing.fps = 60.0f;
@@ -431,6 +521,7 @@ bool retro_load_game(const struct retro_game_info* info)
 
   initConfig();
   updateConfig();
+  initVideo();
 
   if (!createRenderer())
     return false;
@@ -577,6 +668,12 @@ void retro_run(void)
       core->input.releaseScreen();
       screenTouched = false;
     }
+  }
+
+  if (Settings::gpuRenderer == 1)
+  {
+    const uintptr_t fbo = hwRender.get_current_framebuffer();
+    static_cast<RendererOgl*>(videoRenderer)->setFBO(fbo);
   }
 
   core->runFrame();

@@ -474,6 +474,12 @@ void GpuRenderOgl::setShader(GLint shader, bool frag) {
     GLint loc = glGetUniformLocation(program, "texUnits");
     for (int i = 0; i < 3; i++) glUniform1i(loc + i, TEX_UNIT0 + i);
 
+#ifdef __LIBRETRO__
+    currentProgram = program;
+    currentVao = vao;
+    currentVbo = vbo;
+#endif
+
     // Update vertex JIT uniforms as well if necessary
     if (core.gpu.shaderType == 1)
         ((GpuShaderGlsl*)core.gpu.gpuShader)->updateUniforms(program);
@@ -556,6 +562,12 @@ void GpuRenderOgl::submitVertex(SoftVertex &vertex) {
 }
 
 void GpuRenderOgl::flushVertices() {
+#ifdef __LIBRETRO__
+    glBindFramebuffer(GL_FRAMEBUFFER, colBuf);
+    glUseProgram(currentProgram);
+    glBindVertexArray(currentVao);
+    glBindBuffer(GL_ARRAY_BUFFER, currentVbo);
+#endif
     // Update state and draw queued vertices
     if (vertices.empty()) return;
     if (readDirty) updateBuffers();
@@ -630,6 +642,9 @@ void GpuRenderOgl::updateBuffers() {
         uint32_t *data = nullptr;
         uint16_t w = bufWidth, h = bufHeight;
         glActiveTexture(GL_TEXTURE0 + TEX_BUFFER);
+#ifdef __LIBRETRO__
+        glBindTexture(GL_TEXTURE_2D, textures[TEX_BUFFER]);
+#endif
         switch (colbufFmt) {
         case COL_RGBA8:
             data = new uint32_t[w * h];

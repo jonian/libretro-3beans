@@ -16,6 +16,9 @@ public:
   void drawCursor(int x, int y, ScreenLayout &layout);
   void update(ScreenLayout &layout);
   void render(retro_video_refresh_t videoCallback, ScreenLayout &layout);
+  void switchContext() {}
+  void resetContext() {}
+  void destroyContext() {}
 
 private:
   std::vector<uint32_t> videoBuffer;
