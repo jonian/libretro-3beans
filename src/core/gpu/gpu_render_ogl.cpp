@@ -562,14 +562,14 @@ void GpuRenderOgl::submitVertex(SoftVertex &vertex) {
 }
 
 void GpuRenderOgl::flushVertices() {
+    // Update state and draw queued vertices
+    if (vertices.empty()) return;
 #ifdef __LIBRETRO__
     glBindFramebuffer(GL_FRAMEBUFFER, colBuf);
     glUseProgram(currentProgram);
     glBindVertexArray(currentVao);
     glBindBuffer(GL_ARRAY_BUFFER, currentVbo);
 #endif
-    // Update state and draw queued vertices
-    if (vertices.empty()) return;
     if (readDirty) updateBuffers();
     if (texDirty) updateTextures();
     if (lutDirty) updateLuts();
