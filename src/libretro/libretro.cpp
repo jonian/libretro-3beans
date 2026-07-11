@@ -268,6 +268,8 @@ static void initConfig()
     { "3beans_gpuRenderer", "GPU Renderer; Software|OpenGL" },
     { "3beans_gpuVtxShader", "GPU Vertex Shader; Interpreter|GLSL JIT" },
     { "3beans_gpuFragShader", "GPU Fragment Shader; Ubershader|GLSL JIT" },
+    { "3beans_systemType", "System Type; Automatic|New 3DS|Old 3DS" },
+    { "3beans_unitType", "Unit Type; Retail|Dev 1|Dev 2|Dev 3" },
     { "3beans_screenArrangement", "Screen Arrangement; Vertical|Horizontal|Single Screen" },
     { "3beans_screenSizing", "Screen Sizing; Default|Enlarge Top|Enlarge Bottom" },
     { "3beans_screenPosition", "Screen Position; Center|Start|End" },
@@ -293,13 +295,15 @@ static void updateConfig()
   Settings::fpsLimiter = fetchVariableBool("3beans_fpsLimiter", true);
   Settings::threadedGpu = fetchVariableBool("3beans_threadedGpu", false);
   Settings::dspBackend = fetchVariableEnum("3beans_dspBackend", {"Interpreter", "HLE"});
+  Settings::systemType = fetchVariableEnum("3beans_systemType", {"Automatic", "New 3DS", "Old 3DS"});
+  Settings::unitType = fetchVariableEnum("3beans_unitType", {"Retail", "Dev 1", "Dev 2", "Dev 3"});
 
   ScreenLayout::screenArrangement = fetchVariableEnum("3beans_screenArrangement", {"Vertical", "Horizontal", "Single Screen"});
   ScreenLayout::screenSizing = fetchVariableEnum("3beans_screenSizing", {"Default", "Enlarge Top", "Enlarge Bottom"});
   ScreenLayout::screenPosition = fetchVariableEnum("3beans_screenPosition", {"Center", "Start", "End"});
 
   screenSwapMode = fetchVariable("3beans_swapScreenMode", "Toggle");
-  touchMode = fetchVariable("3beans_touchMode", "Touch");
+  touchMode = fetchVariable("3beans_touchMode", "Auto");
   showTouchCursor = fetchVariableBool("3beans_touchCursor", true);
   cursorTimeout = fetchVariableInt("3beans_cursorTimeout", 3);
 
