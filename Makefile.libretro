@@ -3,6 +3,7 @@ BUILD := build-libretro
 GIT_VERSION := $(shell git describe --abbrev=7 --always)
 SRCS := src src/core src/core/arm src/core/convert src/core/dsp src/core/gpu src/core/io src/core/memory src/libretro src/libretro/glad
 ARGS := -Ofast -flto -D__LIBRETRO__ -DVERSION=\"$(GIT_VERSION)\"
+INCS := -Isrc/libretro
 
 CPPFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.cpp))
 CFILES := $(foreach dir,$(SRCS),$(wildcard $(dir)/*.c))

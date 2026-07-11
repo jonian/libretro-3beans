@@ -20,7 +20,7 @@
 #pragma once
 
 #ifdef __LIBRETRO__
-#include "../../libretro/glad/glad.h"
+#include <glad/glad.h>
 #else
 #include <epoxy/gl.h>
 #endif
