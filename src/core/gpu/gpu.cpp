@@ -48,8 +48,7 @@ Gpu::~Gpu() {
 } void Gpu::destroyRenderer() {
 #endif
     // Finish and clean up
-    syncRender();
-    destroyRender();
+    syncRender(true);
 }
 
 void Gpu::createRender() {
@@ -75,7 +74,15 @@ void Gpu::destroyRender() {
     if (renderType == 1) (*contextFunc)();
 }
 
-void Gpu::syncRender() {
+void Gpu::syncRender(bool end) {
+    // Wait for any GPU thread tasks to finish
+    while (thread && taskStart.load() != taskEnd.load())
+        std::this_thread::yield();
+
+    // Check if the renderer/shader or threaded GPU settings changed
+    bool unchanged = (renderType == Settings::gpuRenderer && (renderType != 1 || shaderType == Settings::gpuVtxShader));
+    if (unchanged && (!running.load() || !thread == !Settings::threadedGpu) && !end) return;
+
     // Stop the GPU thread or release context on this thread depending on settings
     if (running.exchange(false)) {
         if (thread) {
@@ -89,8 +96,9 @@ void Gpu::syncRender() {
     }
 
     // Reset the renderer if it was changed
-    if (renderType == Settings::gpuRenderer && shaderType == Settings::gpuVtxShader) return;
+    if (unchanged && !end) return;
     destroyRender();
+    if (end) return;
     createRender();
 
     // Restore the renderer base state
